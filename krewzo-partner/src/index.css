@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+html, body, #root { height: 100%; }
+body { font-family: system-ui, "Noto Sans Telugu", "Noto Sans Devanagari", sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
+button { touch-action: manipulation; }
+button:active { transform: scale(0.97); }
+
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.6); } 100% { box-shadow: 0 0 0 40px rgba(34,197,94,0); } }
+.pulse-ring { animation: pulse-ring 1.4s ease-out infinite; }
+@keyframes flash { 0%,100% { background: #0a0a0a; } 50% { background: #14532d; } }
+.flash { animation: flash 1s ease-in-out infinite; }
+@keyframes rise { from { transform: translateY(100vh) rotate(0); } to { transform: translateY(-20vh) rotate(540deg); } }
+.coin { position: absolute; bottom: 0; animation: rise 2.6s ease-out forwards; font-size: 2.5rem; }
