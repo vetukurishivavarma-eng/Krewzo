@@ -1,0 +1,12 @@
+{
+  "name": "krewzo",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "backend", "krewzo-partner", "krewzo-customer"],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "seed": "npm run seed -w backend",
+    "test": "npm test -w backend",
+    "build": "npm run build -w krewzo-partner && npm run build -w krewzo-customer"
+  }
+}
