@@ -9,8 +9,8 @@ def mark(bg, bar, dot, rx):
             f'<path d="M41 35V73"/><path d="M44.5 60L67 37.5"/></g><circle cx="66" cy="69" r="7.5" fill="{dot}"/></g></svg>')
 
 
-P = 'https://github.com/vetukurishivavarma-eng/Krewzo/releases/download/partner-v2.0.4/krewzo-partner-2.0.4.apk'
-C = 'https://github.com/vetukurishivavarma-eng/Krewzo/releases/download/customer-v2.0.3/krewzo-customer-2.0.3.apk'
+P = 'https://github.com/vetukurishivavarma-eng/Krewzo/releases/download/partner-v2.0.6/krewzo-partner-2.0.6.apk'
+C = 'https://github.com/vetukurishivavarma-eng/Krewzo/releases/download/customer-v2.0.5/krewzo-customer-2.0.5.apk'
 ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>'
 
 CSS = """
@@ -117,10 +117,10 @@ html = f'''<title>Krewzo Demo Apps</title>
   <section class="apps" aria-label="Download the apps">
     {app_card('Krewzo', 'For customers who need help', mark('#c8f031', '#15130f', '#15130f', 24),
               ['Book a helper, mason, plumber or electrician', 'Track the worker live on a map until they arrive', 'Money waits in escrow until the job is done'],
-              C, 'Download Krewzo', 'Android &middot; version 2.0.3 &middot; 4.6 MB', qr['customer'])}
+              C, 'Download Krewzo', 'Android &middot; version 2.0.5 &middot; 4.6 MB', qr['customer'])}
     {app_card('Krewzo Partner', 'For workers who take jobs', mark('#15130f', '#f4f1ea', '#c8f031', 24),
               ['Go on duty and get jobs within 3 km', 'A big ringing alert, even on the lock screen', 'Paid to UPI as soon as the customer confirms', 'Works in English, తెలుగు and हिंदी'],
-              P, 'Download Partner', 'Android &middot; version 2.0.4 &middot; 4.7 MB', qr['partner'])}
+              P, 'Download Partner', 'Android &middot; version 2.0.6 &middot; 4.7 MB', qr['partner'])}
   </section>
 
   <section class="steps" aria-labelledby="install-h">
