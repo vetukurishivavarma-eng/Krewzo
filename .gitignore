@@ -3,3 +3,4 @@ dist/
 backend/data/
 *.log
 .env
+krewzo-partner/android/app/google-services.json

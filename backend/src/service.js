@@ -5,6 +5,7 @@ import {
 } from '@krewzo/shared';
 import { db, now, tx } from './db.js';
 import { newHandshake, checkHandshake } from './handshake.js';
+import { sendPush } from './push.js';
 
 export class ApiError extends Error {
   constructor(status, message, extra = {}) { super(message); this.status = status; this.extra = extra; }
@@ -35,7 +36,7 @@ const getEscrow = (bookingId) => db.prepare('SELECT * FROM escrow_ledger WHERE b
 
 export function publicWorker(w) {
   if (!w) return null;
-  const { pin_hash, ...rest } = w;
+  const { pin_hash, fcm_token, ...rest } = w;
   return rest;
 }
 export function publicUser(u) {
@@ -166,6 +167,12 @@ export function offerView(b, distance_km) {
   };
 }
 
+const PUSH_TEXT = { EN: ['New job', 'km'], TE: ['కొత్త పని', 'కి.మీ'], HI: ['नया काम', 'किमी'] };
+function offerPush(lang, o) {
+  const [title, km] = PUSH_TEXT[lang] || PUSH_TEXT.EN;
+  return { title: `🔔 ${title} · ₹${o.payout}`, body: `${TRADE_TAGS[o.trade_tag]?.icon || ''} ${o.distance_km} ${km} · ${o.duration}`, data: { booking_id: o.booking_id } };
+}
+
 function offer(w, b, d) {
   const prev = db.prepare('SELECT status FROM job_offers WHERE booking_id = ? AND worker_id = ?').get(b.id, w.id);
   if (prev && prev.status !== 'EXPIRED') return false; // never re-offer a job the worker skipped or dropped
@@ -174,6 +181,7 @@ function offer(w, b, d) {
     .run(b.id, w.id, 'OFFERED', d, now());
   const o = offerView(b, d);
   hooks.emit(`worker:${w.id}`, 'job:offer', o);
+  sendPush(w, offerPush(w.language, o));
   if (!hooks.isConnected(w.id)) hooks.notifyWhatsApp(w, 'offer', o);
   return true;
 }
@@ -344,8 +352,14 @@ export function rateWorker(customerId, bookingId, stars) {
 }
 
 // ---------- worker state ----------
-export function setWorkerStatus(workerId, { is_online, lat, lng, language }) {
+export function setWorkerStatus(workerId, { is_online, lat, lng, language, fcm_token }) {
   const w = getWorker(workerId);
+  if (fcm_token !== undefined) {
+    if (fcm_token !== null && !(typeof fcm_token === 'string' && fcm_token.length < 4096)) fail(400, 'Bad push token');
+    // One phone = one worker: if another account last used this phone, stop pushing to it.
+    if (fcm_token) db.prepare('UPDATE workers SET fcm_token = NULL WHERE fcm_token = ? AND id != ?').run(fcm_token, w.id);
+    db.prepare('UPDATE workers SET fcm_token = ? WHERE id = ?').run(fcm_token, w.id);
+  }
   if (lat != null || lng != null) {
     if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) fail(400, 'Bad location');
     db.prepare('UPDATE workers SET lat = ?, lng = ? WHERE id = ?').run(lat, lng, w.id);

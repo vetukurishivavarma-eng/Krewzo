@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client';
 import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { LANGS, SAY } from './i18n.js';
 
 // ---------- API ----------
@@ -45,6 +46,24 @@ export async function startTrip(onError) {
   });
 }
 export const stopTrip = (id) => { if (id) BgGeo.removeWatcher({ id }).catch(() => {}); };
+
+// ---------- push (job offers when the app is closed / phone locked) ----------
+// Ask once, register with Firebase, give the server our token. Tapping a notification opens the app on home.
+export async function setupPush(onTap) {
+  if (!isNative) return;
+  try {
+    await PushNotifications.createChannel({ id: 'jobs', name: 'Job offers', importance: 5, visibility: 1, vibration: true });
+    let p = await PushNotifications.checkPermissions();
+    if (p.receive.startsWith('prompt')) p = await PushNotifications.requestPermissions();
+    if (p.receive !== 'granted') return;
+    await PushNotifications.removeAllListeners();
+    await PushNotifications.addListener('registration', ({ value }) => api('PATCH', '/workers/me', { fcm_token: value }).catch(() => {}));
+    await PushNotifications.addListener('pushNotificationActionPerformed', () => onTap?.());
+    await PushNotifications.register();
+  } catch {}
+}
+// Logging out: stop offers going to this phone.
+export const clearPush = () => (isNative ? api('PATCH', '/workers/me', { fcm_token: null }).catch(() => {}) : null);
 
 export const connectSocket = () => io(getServer() || undefined, { auth: { token: getToken() }, transports: ['websocket', 'polling'] });
 

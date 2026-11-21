@@ -178,3 +178,15 @@ test('customer sees live worker location only until the worker arrives', async (
   assert.equal(seen.length, 1); // stopped at arrival
   sock.close();
 });
+
+test('push token is stored per phone and never returned by the API', async () => {
+  const a = await login('worker', '9000000001'), b = await login('worker', '9000000002');
+  const r = await call('PATCH', '/api/workers/me', { fcm_token: 'phone-token-1' }, a);
+  assert.equal(r.status, 200);
+  assert.equal('fcm_token' in r.body, false);
+  assert.equal('fcm_token' in (await call('GET', '/api/workers/me/home', null, a)).body.worker, false);
+  const { db } = await import('../src/db.js');
+  await call('PATCH', '/api/workers/me', { fcm_token: 'phone-token-1' }, b); // same phone, other account
+  assert.deepEqual(db.prepare("SELECT phone FROM workers WHERE fcm_token = 'phone-token-1'").all().map((x) => x.phone), ['9000000002']);
+  assert.equal((await call('PATCH', '/api/workers/me', { fcm_token: 42 }, b)).status, 400);
+});

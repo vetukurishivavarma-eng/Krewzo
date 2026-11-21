@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
 import { DICT, LANGS } from './i18n.js';
-import { api, getServer, setServer, isNative, startTrip, stopTrip, chime, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE } from './lib.js';
+import { api, getServer, setServer, isNative, setupPush, clearPush, startTrip, stopTrip, chime, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE } from './lib.js';
 import JobAlert from './JobAlert.jsx';
 import ActiveJob from './ActiveJob.jsx';
 import Passbook from './Passbook.jsx';
@@ -17,7 +17,7 @@ export default function App() {
   if (!lang) return <LangPicker onPick={setLang} />;
   const t = DICT[lang];
   if (!token) return <Login t={t} lang={lang} setLang={setLang} onDone={(tok) => { setToken(tok); setTok(tok); }} />;
-  return <Main t={t} lang={lang} setLang={setLang} onLogout={() => { setToken(null); setTok(null); }} />;
+  return <Main t={t} lang={lang} setLang={setLang} onLogout={() => { clearPush(); setToken(null); setTok(null); }} />;
 }
 
 // ---------- shared bits ----------
@@ -173,6 +173,7 @@ function Main({ t, lang, setLang, onLogout }) {
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => () => clearTimeout(retry.current), []);
+  useEffect(() => { setupPush(() => loadRef.current()); }, []);
 
   useEffect(() => {
     load();
