@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { COLOR_TAGS, rupees } from '@krewzo/shared';
+import { api } from './lib.js';
 
 // Krewzo Handshake: one sheet, three ways for the worker to confirm. START glows emerald, END glows vault-gold.
 export default function HandshakeSheet({ ticket, phase, onClose }) {
@@ -44,12 +45,26 @@ export default function HandshakeSheet({ ticket, phase, onClose }) {
             </div>
             <div className="mt-3 text-center text-xs text-muted">or 4-digit code</div>
             <div className="text-center font-mono text-3xl font-black tracking-[0.5em] text-ink">{hs?.otp_code}</div>
-            {ticket.handshake_fails > 0 && <div className="mt-3 text-center text-sm text-[#9a5b00]">Worker entered a wrong code {ticket.handshake_fails}×. Codes refresh after 5 tries.</div>}
+            {ticket.handshake_locked ? (
+              <div className="mt-4 rounded-2xl bg-danger/10 border border-danger/30 p-3 text-sm text-center">
+                <div className="font-bold text-danger">Codes locked after too many wrong tries</div>
+                <div className="text-muted mt-1">Only make a new code when the worker is standing in front of you.</div>
+                <NewCodeButton id={ticket.id} />
+              </div>
+            ) : ticket.handshake_fails > 0 && <div className="mt-3 text-center text-sm text-[#9a5b00]">Worker entered a wrong code {ticket.handshake_fails}×. Codes refresh after 5 tries.</div>}
             {gold && <div className="mt-4 text-center text-sm text-muted">{rupees(ticket.worker_payout)} will be released from escrow to {ticket.worker?.name}'s UPI.</div>}
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function NewCodeButton({ id }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button disabled={busy} onClick={async () => { setBusy(true); try { await api('POST', `/bookings/${id}/new-code`); } finally { setBusy(false); } }}
+      className="mt-3 h-11 px-5 rounded-xl bg-ink text-paper font-bold disabled:opacity-50">{busy ? 'Making…' : 'Make a new code'}</button>
   );
 }
 

@@ -153,9 +153,18 @@ for (const sql of [
   // Krewzo Business: team members book on the owner's plan; MONTHLY groups go on the owner's monthly bill
   'ALTER TABLE users ADD COLUMN business_owner_id INTEGER', 'ALTER TABLE bookings ADD COLUMN dispatch_km REAL',
   "ALTER TABLE booking_groups ADD COLUMN pay_mode TEXT NOT NULL DEFAULT 'UPI'", 'ALTER TABLE booking_groups ADD COLUMN billed_to INTEGER',
+  // wrong start/finish codes across rotations, and the lock that only the customer can lift
+  'ALTER TABLE bookings ADD COLUMN handshake_total INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE bookings ADD COLUMN handshake_locked INTEGER NOT NULL DEFAULT 0',
+  // unguessable link to a verified worker's selfie (was /api/workers/<id>/photo, easy to scrape)
+  'ALTER TABLE workers ADD COLUMN photo_token TEXT',
 ]) { try { db.exec(sql); } catch {} }
 
 export const now = () => new Date().toISOString();
+
+// Old selfie links were /api/workers/<id>/photo (guessable): give every verified worker a random token instead.
+for (const w of db.prepare("SELECT id FROM workers WHERE photo_url LIKE '/api/workers/%/photo'").all()) {
+  db.prepare('UPDATE workers SET photo_url = NULL, photo_token = ? WHERE id = ?').run(crypto.randomBytes(18).toString('base64url'), w.id);
+}
 
 export function tx(fn) {
   db.exec('BEGIN IMMEDIATE');

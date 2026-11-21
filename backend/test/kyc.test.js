@@ -76,7 +76,8 @@ test('valid signed QR + matching mobile + selfie verifies the partner; customers
   assert.equal(r.body.name, 'Ravi Kumar');
   const w = (await call('GET', '/api/workers/me/home', null, t)).body.worker;
   assert.equal(w.kyc_verified, true);
-  const photo = await fetch(base + w.photo_url);
+  assert.equal((await fetch(`${base}/api/workers/${w.id}/photo`)).status, 404, 'no guessable photo links');
+  const photo = await fetch(`${base}/api/photos/${w.photo_token}`);
   assert.equal(photo.status, 200);
   assert.equal(photo.headers.get('content-type'), 'image/jpeg');
 });

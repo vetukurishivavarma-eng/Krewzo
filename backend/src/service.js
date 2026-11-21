@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import {
-  ACTIVE_STATUSES, BOOKING_STATUS as S, DISPATCH_RADIUS_KM, DURATIONS, GSTIN_RE, HANDSHAKE_MAX_FAILS,
+  ACTIVE_STATUSES, BOOKING_STATUS as S, DISPATCH_RADIUS_KM, DURATIONS, FINISH_MIN_MINUTES, GSTIN_RE, HANDSHAKE_LOCK_FAILS, HANDSHAKE_MAX_FAILS, SCHEDULE_LEAD_HOURS,
   SKILL_TIERS, SLOTS, TRADE_TAGS, UPI_RE, canTransition, cancelFee, haversineKm, quotePrice,
 } from '@krewzo/shared';
 import { db, now, tx } from './db.js';
@@ -51,7 +51,7 @@ export function viewFor(b, role) {
   if (!b) return null;
   const out = { ...b, escrow: getEscrow(b.id) };
   const w = b.worker_id ? getWorker(b.worker_id) : null;
-  out.worker = w && { id: w.id, name: w.name, phone: w.phone, photo_url: w.photo_url, rating: w.rating, kyc_verified: w.kyc_verified, skill_tier: w.skill_tier, lat: w.lat, lng: w.lng,
+  out.worker = w && { id: w.id, name: w.name, phone: w.phone, photo_url: w.photo_token ? `/api/photos/${w.photo_token}` : null, rating: w.rating, kyc_verified: w.kyc_verified, skill_tier: w.skill_tier, lat: w.lat, lng: w.lng,
     // UPI only after the job is paid out (for tips): wages must go through escrow, never direct.
     ...(b.status === S.PAID_OUT && { upi_id: w.upi_id }) };
   if (role === 'worker') {
@@ -160,7 +160,22 @@ export function listGroups(customerId) {
 }
 
 // ---------- geo dispatch ----------
-const isBusy = (workerId) => !!db.prepare(`SELECT 1 FROM bookings WHERE worker_id = ? AND status IN (${ACTIVE_STATUSES.map(() => '?').join(',')})`).get(workerId, ...ACTIVE_STATUSES);
+// A job is "current" once it needs the worker now: instant jobs right away, scheduled ones SCHEDULE_LEAD_HOURS before
+// their slot. Scheduled jobs further out are "upcoming" and don't block instant work.
+const leadCutoff = () => new Date(Date.now() + SCHEDULE_LEAD_HOURS * 3600e3).toISOString();
+const CURRENT_SQL = `worker_id = ? AND (status IN ('ARRIVED','IN_PROGRESS','COMPLETED') OR (status = 'ASSIGNED' AND (scheduled_at IS NULL OR scheduled_at <= ?)))`;
+const isBusy = (workerId) => !!db.prepare(`SELECT 1 FROM bookings WHERE ${CURRENT_SQL}`).get(workerId, leadCutoff());
+
+// Two jobs for one worker must not overlap in time (a scheduled job's slot, plus travel slack).
+function clashes(workerId, b) {
+  const start = Date.parse(b.scheduled_at || now());
+  const end = start + DURATIONS[b.duration].hours * 3600e3;
+  return db.prepare("SELECT scheduled_at, assigned_at, duration FROM bookings WHERE worker_id = ? AND status IN ('ASSIGNED','ARRIVED','IN_PROGRESS') AND id != ?").all(workerId, b.id)
+    .some((o) => {
+      const s = Date.parse(o.scheduled_at || o.assigned_at), e = s + DURATIONS[o.duration].hours * 3600e3;
+      return start < e + 3600e3 && s < end + 3600e3; // keep an hour between jobs
+    });
+}
 
 function eligible(w, b) {
   if (!w.is_online || !w.kyc_verified || w.lat == null) return null;
@@ -210,7 +225,7 @@ export function dispatch(b) {
   let n = 0;
   for (const w of workers) {
     const d = eligible(w, b);
-    if (d != null && !isBusy(w.id) && offer(w, b, d)) n++;
+    if (d != null && !isBusy(w.id) && !clashes(w.id, b) && offer(w, b, d)) n++;
   }
   return n;
 }
@@ -221,7 +236,7 @@ export function dispatchToWorker(workerId) {
   if (!w || isBusy(w.id)) return 0;
   const open = db.prepare("SELECT * FROM bookings WHERE status = 'SEARCHING' ORDER BY id").all().map(parseBooking);
   let n = 0;
-  for (const b of open) { const d = eligible(w, b); if (d != null && offer(w, b, d)) n++; }
+  for (const b of open) { const d = eligible(w, b); if (d != null && !clashes(w.id, b) && offer(w, b, d)) n++; }
   return n;
 }
 
@@ -262,15 +277,16 @@ export function acceptJob(workerId, bookingId) {
   const w = getWorker(workerId);
   if (!w.kyc_verified) fail(403, 'KYC not verified yet');
   if (!w.is_online) fail(409, 'Go ON DUTY first');
-  if (isBusy(w.id)) fail(409, 'Finish your current job first');
+  if (isBusy(w.id) && !getBooking(bookingId)?.scheduled_at) fail(409, 'Finish your current job first');
   const o = db.prepare('SELECT status, created_at FROM job_offers WHERE booking_id = ? AND worker_id = ?').get(bookingId, w.id);
   if (!o || o.status !== 'OFFERED' || !fresh(o.created_at)) fail(409, 'This job is no longer available');
   const b = tx(() => {
     const cur = getBooking(bookingId);
     if (!cur || cur.status !== S.SEARCHING) fail(409, 'Job already taken');
+    if (clashes(w.id, cur)) fail(409, 'This clashes with another job you have');
     const nb = transition(cur, S.ASSIGNED, { worker_id: w.id, assigned_at: now(), assigned_lat: w.lat, assigned_lng: w.lng, start_handshake: newHandshake(cur.id, 'START'), handshake_fails: 0 });
     db.prepare("UPDATE job_offers SET status = 'ACCEPTED' WHERE booking_id = ? AND worker_id = ?").run(cur.id, w.id);
-    db.prepare("UPDATE job_offers SET status = 'EXPIRED' WHERE worker_id = ? AND status = 'OFFERED' AND booking_id != ?").run(w.id, cur.id);
+    if (!cur.scheduled_at) db.prepare("UPDATE job_offers SET status = 'EXPIRED' WHERE worker_id = ? AND status = 'OFFERED' AND booking_id != ?").run(w.id, cur.id);
     return nb;
   });
   expireOffers(b.id, w.id);
@@ -314,9 +330,23 @@ export function verifyHandshake(workerId, bookingId, method, payload) {
   if (!phase) fail(409, 'Nothing to verify for this job');
   const key = phase === 'START' ? 'start_handshake' : 'end_handshake';
   const hs = b[key];
+  if (b.handshake_locked) fail(423, 'Codes are locked after too many wrong tries. The customer must create a new code in their app.', { locked: true });
+  if (phase === 'END' && Date.now() - Date.parse(b.started_at) < FINISH_MIN_MINUTES * 60e3) {
+    fail(409, `The finish code works ${FINISH_MIN_MINUTES} minutes after the start.`, { code: 'TOO_EARLY' });
+  }
 
   if (!checkHandshake(hs, method, payload)) {
     const fails = b.handshake_fails + 1;
+    const total = b.handshake_total + 1;
+    if (total >= HANDSHAKE_LOCK_FAILS) {
+      // Someone is guessing: stop accepting codes until the customer (who must be present) makes a new one.
+      db.prepare('UPDATE bookings SET handshake_fails = 0, handshake_total = ?, handshake_locked = 1 WHERE id = ?').run(total, b.id);
+      const lb = getBooking(b.id);
+      broadcast(lb);
+      pushCustomer(lb, '⚠️ Too many wrong codes', 'Someone entered wrong codes on your booking. Codes are locked: only make a new one when the worker is in front of you.');
+      fail(423, 'Too many wrong tries. Codes are locked: the customer must create a new code in their app.', { locked: true });
+    }
+    db.prepare('UPDATE bookings SET handshake_total = ? WHERE id = ?').run(total, b.id);
     if (fails >= HANDSHAKE_MAX_FAILS) {
       // Too many wrong guesses: rotate every code so guessing restarts from zero.
       db.prepare(`UPDATE bookings SET ${key} = ?, handshake_fails = 0 WHERE id = ?`).run(JSON.stringify(newHandshake(b.id, phase)), b.id);
@@ -341,6 +371,19 @@ export function verifyHandshake(workerId, bookingId, method, payload) {
   }
   broadcast(b);
   return { booking: viewFor(b, 'worker'), phase, receipt };
+}
+
+// Customer, in front of the worker: fresh codes for the current step, and unlock after too many wrong tries.
+export function newCode(customerId, bookingId) {
+  const b = getBooking(bookingId);
+  if (!b || b.customer_id !== customerId) fail(404, 'Booking not found');
+  const phase = [S.ASSIGNED, S.ARRIVED].includes(b.status) ? 'START' : b.status === S.IN_PROGRESS ? 'END' : null;
+  if (!phase) fail(409, 'No code needed right now');
+  const key = phase === 'START' ? 'start_handshake' : 'end_handshake';
+  db.prepare(`UPDATE bookings SET ${key} = ?, handshake_fails = 0, handshake_total = 0, handshake_locked = 0 WHERE id = ?`).run(JSON.stringify(newHandshake(b.id, phase)), b.id);
+  const nb = getBooking(b.id);
+  broadcast(nb);
+  return viewFor(nb, 'customer');
 }
 
 // COMPLETED -> PAID_OUT. Must run inside a transaction.
@@ -461,7 +504,13 @@ export function setWorkerStatus(workerId, { is_online, lat, lng, language, fcm_t
 }
 
 export function activeJob(workerId) {
-  return parseBooking(db.prepare(`SELECT * FROM bookings WHERE worker_id = ? AND status IN (${ACTIVE_STATUSES.map(() => '?').join(',')}) ORDER BY id DESC`).get(workerId, ...ACTIVE_STATUSES));
+  return parseBooking(db.prepare(`SELECT * FROM bookings WHERE ${CURRENT_SQL} ORDER BY COALESCE(scheduled_at, assigned_at)`).get(workerId, leadCutoff()));
+}
+
+// Scheduled jobs the worker has accepted that aren't due yet.
+export function upcomingJobs(workerId) {
+  return db.prepare("SELECT * FROM bookings WHERE worker_id = ? AND status = 'ASSIGNED' AND scheduled_at > ? ORDER BY scheduled_at").all(workerId, leadCutoff())
+    .map((b) => viewFor(parseBooking(b), 'worker'));
 }
 
 function istDayStart() {
@@ -476,7 +525,7 @@ export function workerHome(workerId) {
     COUNT(CASE WHEN status = 'PAID_OUT' THEN 1 END) AS n FROM bookings
     WHERE worker_id = ? AND ((status = 'PAID_OUT' AND paid_out_at >= ?) OR (status = 'CANCELLED' AND cancel_fee > 0 AND cancelled_at >= ?))`).get(w.id, day, day);
   const act = activeJob(w.id);
-  return { worker: publicWorker(w), today_earnings: today.s, today_shifts: today.n, active: act ? viewFor(act, 'worker') : null, offers: act ? [] : openOffers(w.id) };
+  return { worker: publicWorker(w), today_earnings: today.s, today_shifts: today.n, active: act ? viewFor(act, 'worker') : null, upcoming: upcomingJobs(w.id), offers: act ? [] : openOffers(w.id) };
 }
 
 export function passbook(workerId) {

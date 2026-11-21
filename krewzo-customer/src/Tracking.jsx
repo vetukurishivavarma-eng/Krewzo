@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BadgeCheck, DoorOpen, KeyRound, Phone, ReceiptText, Star } from 'lucide-react';
 import { SKILL_TIERS, TRADE_TAGS, haversineKm, rupees } from '@krewzo/shared';
-import { api, connectSocket, getServer, getToken } from './lib.js';
+import { api, connectSocket, getServer, openDownload } from './lib.js';
 import HandshakeSheet from './HandshakeSheet.jsx';
 import MapPin from './MapPin.jsx';
 import TipSheet from './TipSheet.jsx';
@@ -15,6 +15,7 @@ export default function Tracking({ groupId, onBack }) {
   const [sheet, setSheet] = useState(null); // { id, phase }
   const [err, setErr] = useState('');
   const [cancelQ, setCancelQ] = useState(null); // { id, fee, km, refund, worker_name }
+  const [confirmEnd, setConfirmEnd] = useState(null); // ticket waiting for "is the work finished?"
   const prev = useRef({});
 
   useEffect(() => {
@@ -64,8 +65,8 @@ export default function Tracking({ groupId, onBack }) {
           <div className="font-display text-xl font-extrabold truncate">{TRADE_TAGS[first.trade_tag]?.icon} {TRADE_TAGS[first.trade_tag]?.label} × {g.worker_count}</div>
           <div className="text-xs text-muted truncate">{first.duration} · {first.booking_mode === 'SCHEDULED' ? new Date(first.scheduled_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Instant'} · {first.address}</div>
         </div>
-        <a href={`${getServer()}/api/groups/${g.id}/invoice?token=${encodeURIComponent(getToken())}`} target="_blank" rel="noreferrer" aria-label="Invoice"
-          className="w-11 h-11 rounded-full bg-card border border-line flex items-center justify-center shrink-0"><ReceiptText size={19} /></a>
+        <button onClick={() => openDownload(`/groups/${g.id}/invoice`).catch((e) => setErr(e.message))} aria-label="Invoice"
+          className="w-11 h-11 rounded-full bg-card border border-line flex items-center justify-center shrink-0"><ReceiptText size={19} /></button>
       </div>
 
       {assigned.length > 0 && (
@@ -77,10 +78,41 @@ export default function Tracking({ groupId, onBack }) {
         </div>
       )}
 
-      {g.tickets.map((t, i) => <Ticket key={t.id} t={t} n={g.tickets.length > 1 ? i + 1 : null} onSheet={(phase) => setSheet({ id: t.id, phase })} onCancel={() => cancel(t.id)} onRate={(s) => rate(t.id, s)} />)}
+      {g.tickets.map((t, i) => <Ticket key={t.id} t={t} n={g.tickets.length > 1 ? i + 1 : null} onSheet={(phase) => (phase === 'END' && t.status === 'IN_PROGRESS' ? setConfirmEnd(t) : setSheet({ id: t.id, phase }))} onCancel={() => cancel(t.id)} onRate={(s) => rate(t.id, s)} />)}
       {err && <div className="text-sm text-danger font-semibold">{err}</div>}
       {open && <HandshakeSheet ticket={open} phase={sheet.phase} onClose={() => setSheet(null)} />}
       {cancelQ && <CancelSheet q={cancelQ} onKeep={() => setCancelQ(null)} onCancel={confirmCancel} />}
+      {confirmEnd && <FinishCheck t={confirmEnd} onNo={() => setConfirmEnd(null)} onYes={() => { setSheet({ id: confirmEnd.id, phase: 'END' }); setConfirmEnd(null); }} />}
+    </div>
+  );
+}
+
+// Before the FINISH code appears: payment is released the instant the worker enters it, so make the customer
+// confirm the work is really done (scam: "show me the code now, I'll come back tomorrow").
+function FinishCheck({ t, onNo, onYes }) {
+  const mins = Math.floor((Date.now() - Date.parse(t.started_at)) / 60e3);
+  const booked = parseInt(t.duration) * 60;
+  const early = mins < booked / 2;
+  const first = t.worker?.name?.split(' ')[0] || 'the worker';
+  const tooSoon = mins < 15;
+  const fmt = (m) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm" onClick={onNo}>
+      <div onClick={(e) => e.stopPropagation()} className="sheet w-full max-w-md rounded-t-[2rem] bg-card px-6 pt-3 pb-8">
+        <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-5" />
+        <div className="font-display text-2xl font-extrabold">Is the work finished?</div>
+        <p className="text-muted mt-2">{rupees(t.worker_payout)} goes to {first} the moment they enter the finish code. Only show it when you are happy with the work.</p>
+        <div className={`mt-4 rounded-2xl p-3 text-sm ${early ? 'bg-amber/15 text-[#9a5b00]' : 'bg-paper'}`}>
+          Worked so far: <b>{fmt(mins)}</b> of {t.duration.replace('H', ' hours')} booked.
+          {early && <div className="mt-1 font-semibold">That's less than half the time you paid for.</div>}
+        </div>
+        {tooSoon && <p className="text-xs text-muted mt-2">The finish code starts working 15 minutes after the start.</p>}
+        <p className="text-xs text-muted mt-3">Never share the finish code if someone asks for it early. Krewzo will never ask you for it.</p>
+        <div className="grid grid-cols-2 gap-2 mt-5">
+          <button onClick={onNo} className="h-12 rounded-xl border border-line font-bold">Not yet</button>
+          <button onClick={onYes} className="h-12 rounded-xl bg-ink text-paper font-bold">Yes, it's done</button>
+        </div>
+      </div>
     </div>
   );
 }

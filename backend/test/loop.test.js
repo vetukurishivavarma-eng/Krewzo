@@ -8,6 +8,9 @@ import { io as ioc } from 'socket.io-client';
 import { DEFAULT_LOCATION as L, quotePrice } from '@krewzo/shared';
 
 const { createApp } = await import('../src/app.js');
+const { db } = await import('../src/db.js');
+// The FINISH code is refused in the first 15 minutes; tests move the start back instead of waiting.
+const startedAgo = (id, min = 20) => db.prepare('UPDATE bookings SET started_at = ? WHERE id = ?').run(new Date(Date.now() - min * 60e3).toISOString(), id);
 let server, base;
 before(async () => {
   ({ server } = createApp());
@@ -76,6 +79,10 @@ test('book -> accept -> start -> end -> paid out', async () => {
   assert.equal(ok.body.booking.status, 'IN_PROGRESS');
 
   cv = (await call('GET', `/api/groups/${g.body.id}`, null, cust)).body.tickets[0];
+  const early = await call('POST', `/api/bookings/${id}/verify-handshake`, { method: 'QR', payload: { qr_token: cv.end_handshake.qr_token } }, ramu);
+  assert.equal(early.status, 409, 'no "pay me now, I will come back" right after the start');
+  assert.equal(early.body.code, 'TOO_EARLY');
+  startedAgo(id);
   const end = await call('POST', `/api/bookings/${id}/verify-handshake`, { method: 'QR', payload: { qr_token: cv.end_handshake.qr_token } }, ramu);
   assert.equal(end.status, 200, JSON.stringify(end.body));
   assert.equal(end.body.booking.status, 'PAID_OUT');
@@ -118,7 +125,10 @@ test('multi-worker booking creates tickets; cancel refunds', async () => {
   const c = await call('POST', `/api/bookings/${g.body.tickets[2].id}/cancel`, null, cust);
   assert.equal(c.body.status, 'CANCELLED');
   assert.equal(c.body.escrow.status, 'REFUNDED');
-  const inv = await fetch(`${base}/api/groups/${g.body.id}/invoice?token=${cust}`);
+  assert.equal((await fetch(`${base}/api/groups/${g.body.id}/invoice?token=${cust}`)).status, 401, 'login tokens are not accepted in URLs');
+  const link = (await call('POST', '/api/download-link', { path: `/api/groups/${g.body.id}/invoice` }, cust)).body.url;
+  assert.equal((await fetch(base + link.replace(/invoice\?/, 'invoice?x=1&').replace('/invoice?', '/../groups/' + g.body.id + '/invoice?'))).status >= 400, true, 'a link only opens its own file');
+  const inv = await fetch(base + link);
   assert.match(await inv.text(), /36ABCDE1234F1Z5/);
   assert.equal((await book(cust, { account_type: 'BUSINESS', gstin: 'BAD' })).status, 400);
   for (const t of g.body.tickets.slice(0, 2)) await call('POST', `/api/bookings/${t.id}/cancel`, null, cust);
@@ -135,6 +145,7 @@ test('whatsapp bridge runs the same loop', async () => {
   await wa(`OTP ${s.otp_code}`);
   const e = (await call('GET', `/api/groups/${g.body.id}`, null, cust)).body.tickets[0];
   assert.equal(e.status, 'IN_PROGRESS');
+  startedAgo(e.id);
   assert.match(await wa(e.end_handshake.otp_code), /₹/);
   assert.equal((await call('GET', `/api/groups/${g.body.id}`, null, cust)).body.tickets[0].status, 'PAID_OUT');
 });
@@ -240,4 +251,55 @@ test('customer cancelling after accept tells the worker; a worker on the way is 
   assert.equal(home.active, null); // free for new jobs
   assert.equal(home.today_earnings, before + q.fee); // travel pay counts as today's money
   sock.close();
+});
+
+test('guessing start/finish codes locks them until the customer makes a new code', async () => {
+  const cust = await login('customer', '9999999999');
+  let w;
+  for (const phone of ['9000000005', '9000000002', '9000000001', '9000000004']) {
+    const t = await login('worker', phone);
+    const h = t && (await call('GET', '/api/workers/me/home', null, t));
+    if (h?.status === 200 && !h.body.active) { w = t; break; } // skip busy or locked-out accounts
+  }
+  const id = (await book(cust)).body.tickets[0].id;
+  assert.equal((await call('POST', `/api/bookings/${id}/accept`, null, w)).status, 200);
+  const real0 = (await call('GET', '/api/bookings', null, cust)).body.flatMap((g) => g.tickets).find((t) => t.id === id).start_handshake;
+  const wrongColor = ['ORANGE', 'BLUE', 'GREEN'].find((c) => c !== real0.color_tag);
+  const guess = () => call('POST', `/api/bookings/${id}/verify-handshake`, { method: 'COLOR_PIN', payload: { color_tag: wrongColor, short_pin: '00' } }, w);
+  let r;
+  for (let i = 0; i < 9; i++) { r = await guess(); if (r.status !== 400) break; }
+  r = await guess();
+  assert.equal(r.status, 423, JSON.stringify(r.body));
+  assert.equal(r.body.locked, true);
+  // Even the right code is refused while locked
+  const g = (await call('GET', '/api/bookings', null, cust)).body.find((x) => x.tickets.some((t) => t.id === id));
+  const code = g.tickets.find((t) => t.id === id).start_handshake;
+  assert.equal((await call('POST', `/api/bookings/${id}/verify-handshake`, { method: 'OTP', payload: { otp_code: code.otp_code } }, w)).status, 423);
+  // Customer makes a new code; it works
+  const fresh = (await call('POST', `/api/bookings/${id}/new-code`, null, cust)).body;
+  assert.equal(fresh.handshake_locked, 0);
+  assert.equal((await call('POST', `/api/bookings/${id}/verify-handshake`, { method: 'OTP', payload: { otp_code: fresh.start_handshake.otp_code } }, w)).body.booking.status, 'IN_PROGRESS');
+});
+
+test('a scheduled job does not block instant work, and clashing jobs are refused', async () => {
+  const cust = await login('customer', '9999999999');
+  let w;
+  for (const phone of ['9000000002', '9000000005', '9000000001', '9000000004']) {
+    const t = await login('worker', phone);
+    const h = t && (await call('GET', '/api/workers/me/home', null, t));
+    if (h?.status === 200 && !h.body.active) { w = t; break; } // skip busy or locked-out accounts
+  }
+  const day = new Date(Date.now() + 5.5 * 3600e3 + 3 * 864e5).toISOString().slice(0, 10); // 3 days ahead (IST)
+  const later = (await book(cust, { booking_mode: 'SCHEDULED', scheduled_date: day, slot: 'MORNING' })).body.tickets[0].id;
+  assert.equal((await call('POST', `/api/bookings/${later}/accept`, null, w)).status, 200);
+  const home = (await call('GET', '/api/workers/me/home', null, w)).body;
+  assert.equal(home.active, null, 'not the current job yet');
+  assert.ok(home.upcoming.some((b) => b.id === later));
+
+  const now = (await book(cust)).body.tickets[0].id; // instant job still reaches this worker
+  assert.equal((await call('POST', `/api/bookings/${now}/accept`, null, w)).status, 200);
+
+  const same = (await book(cust, { booking_mode: 'SCHEDULED', scheduled_date: day, slot: 'MORNING' })).body.tickets[0].id;
+  const clash = await call('POST', `/api/bookings/${same}/accept`, null, w);
+  assert.equal(clash.status, 409);
 });

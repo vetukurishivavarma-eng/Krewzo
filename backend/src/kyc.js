@@ -77,7 +77,7 @@ function tellWorker(workerId, ok) {
 }
 
 function approve(workerId) {
-  db.prepare("UPDATE workers SET kyc_verified = 1, photo_url = ? WHERE id = ?").run(`/api/workers/${workerId}/photo`, workerId);
+  db.prepare('UPDATE workers SET kyc_verified = 1, photo_url = NULL, photo_token = ? WHERE id = ?').run(crypto.randomBytes(18).toString('base64url'), workerId);
   tellWorker(workerId, true);
 }
 
@@ -87,9 +87,11 @@ export function kycStatus(workerId) {
   return { ...k, flags: JSON.parse(k.flags) };
 }
 
-// Customers see the verified worker's selfie so they know who is at the door.
-export function workerPhoto(workerId) {
-  const r = db.prepare("SELECT selfie FROM kyc_submissions WHERE worker_id = ? AND status = 'VERIFIED'").get(workerId);
+// Customers see the verified worker's selfie so they know who is at the door. The link is a random token
+// that only appears in that worker's bookings, so photos can't be collected by counting ids.
+export function workerPhoto(token) {
+  if (!/^[\w-]{20,40}$/.test(token || '')) return null;
+  const r = db.prepare("SELECT k.selfie FROM workers w JOIN kyc_submissions k ON k.worker_id = w.id WHERE w.photo_token = ? AND k.status = 'VERIFIED'").get(token);
   return r?.selfie || null;
 }
 
@@ -112,7 +114,7 @@ export function reviewKyc(workerId, { verified, note, block }) {
     approve(workerId);
   } else {
     if (k) db.prepare("UPDATE kyc_submissions SET status = 'REJECTED', reviewed_at = ?, note = ? WHERE worker_id = ?").run(now(), note || null, workerId);
-    db.prepare('UPDATE workers SET kyc_verified = 0, is_online = 0 WHERE id = ?').run(workerId);
+    db.prepare('UPDATE workers SET kyc_verified = 0, is_online = 0, photo_token = NULL WHERE id = ?').run(workerId);
     tellWorker(workerId, false);
     if (block && k) db.prepare('INSERT OR IGNORE INTO kyc_blocklist (identity_hash, reason, created_at) VALUES (?,?,?)').run(k.identity_hash, note || 'blocked by ops', now());
   }
@@ -124,6 +126,6 @@ export function resetKyc(phone) {
   const w = db.prepare('SELECT id FROM workers WHERE phone = ?').get(String(phone).replace(/\D/g, '').slice(-10));
   if (!w) throw new ApiError(404, 'No partner with that phone number');
   db.prepare('DELETE FROM kyc_submissions WHERE worker_id = ?').run(w.id);
-  db.prepare('UPDATE workers SET kyc_verified = 0, is_online = 0, photo_url = NULL WHERE id = ?').run(w.id);
+  db.prepare('UPDATE workers SET kyc_verified = 0, is_online = 0, photo_url = NULL, photo_token = NULL WHERE id = ?').run(w.id);
   return publicWorker(getWorker(w.id));
 }

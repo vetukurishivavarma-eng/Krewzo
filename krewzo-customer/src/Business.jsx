@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Briefcase, Check, Download, FileText, Loader2, Radar, Receipt, Trash2, UserPlus, Users, Wallet } from 'lucide-react';
 import { GST_PCT, rupees } from '@krewzo/shared';
-import { api, getServer, getToken } from './lib.js';
+import { api, openDownload } from './lib.js';
 
 const PERKS = (p) => [
   p.fee_off === 1 ? 'No platform fee on any booking' : `${Math.round(p.fee_off * 100)}% off the platform fee`,
@@ -13,7 +13,6 @@ const PERKS = (p) => [
 const withGst = (n) => n + Math.round(n * GST_PCT);
 const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 const monthName = (m) => new Date(`${m}-15`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-const fileUrl = (path) => `${getServer()}/api${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(getToken())}`;
 
 export default function Business({ user, onBack, onChanged }) {
   const [data, setData] = useState(null);
@@ -190,8 +189,8 @@ function Statement({ overdue, onPaid }) {
           {st.payable && <button onClick={pay} className="h-12 rounded-xl bg-ink text-paper font-bold">Pay {rupees(t.due)} by UPI</button>}
           {!st.paid && !st.payable && t.due > 0 && <div className="text-xs text-muted">This month is still running. The bill is ready on the 1st and due by the 7th.</div>}
           <div className="grid grid-cols-2 gap-2">
-            <a href={fileUrl(`/business/invoice?month=${month}`)} target="_blank" rel="noreferrer" className="h-11 rounded-xl border border-line text-sm font-bold flex items-center justify-center gap-1.5"><FileText size={16} /> GST invoice</a>
-            <a href={fileUrl(`/business/attendance.csv?month=${month}`)} target="_blank" rel="noreferrer" className="h-11 rounded-xl border border-line text-sm font-bold flex items-center justify-center gap-1.5"><Download size={16} /> Attendance</a>
+            <button onClick={() => openDownload(`/business/invoice?month=${month}`).catch((e) => setErr(e.message))} className="h-11 rounded-xl border border-line text-sm font-bold flex items-center justify-center gap-1.5"><FileText size={16} /> GST invoice</button>
+            <button onClick={() => openDownload(`/business/attendance.csv?month=${month}`).catch((e) => setErr(e.message))} className="h-11 rounded-xl border border-line text-sm font-bold flex items-center justify-center gap-1.5"><Download size={16} /> Attendance</button>
           </div>
         </>
       )}

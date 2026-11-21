@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { Server } from 'socket.io';
 import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
-import { db, now } from './db.js';
+import { db, now, SECRET } from './db.js';
 import { checkPin, hashPin, normPhone, readToken, signToken, validPhone, validPin, safeEqual } from './auth.js';
 import * as svc from './service.js';
 import { extractMessages, handleMessage, notifyWhatsApp, sendWhatsApp } from './whatsapp.js';
@@ -30,6 +30,14 @@ function verifyPin(key, pin, hash) {
   throw new svc.ApiError(left ? 401 : 429, left ? `Wrong PIN. ${left} ${left === 1 ? 'try' : 'tries'} left` : 'Too many wrong PINs. Try again in 15 min');
 }
 
+// ?dl=<id>.<expiry>.<hmac> from /api/download-link: valid 5 minutes, for that exact file path, customer role only.
+function readDownload(req) {
+  const m = /^(\d+)\.(\d+)\.([\w-]+)$/.exec(String(req.query.dl || ''));
+  if (!m || Number(m[2]) < Date.now()) return null;
+  const want = crypto.createHmac('sha256', SECRET).update(`customer|${m[1]}|${req.path}|${m[2]}`).digest('base64url');
+  return safeEqual(m[3], want) ? { role: 'customer', id: Number(m[1]) } : null;
+}
+
 export function createApp() {
   seedIfEmpty();
   const app = express();
@@ -47,7 +55,8 @@ export function createApp() {
   app.use((req, res, next) => (req.path === '/api/workers/me/kyc' ? large : small)(req, res, next));
 
   const auth = (role) => (req, _res, next) => {
-    const t = readToken((req.headers.authorization || '').replace(/^Bearer /, '') || req.query.token);
+    // Login tokens only travel in the Authorization header; file downloads use short-lived signed links (?dl=).
+    const t = readToken((req.headers.authorization || '').replace(/^Bearer /, '')) || readDownload(req);
     if (!t || (role && t.role !== role)) throw new svc.ApiError(401, 'Please log in again');
     // A valid token can outlive its account (e.g. the demo DB was reset), so the apps must be sent back to login.
     const table = { customer: 'users', worker: 'workers' }[t.role];
@@ -103,6 +112,16 @@ export function createApp() {
   app.get('/api/bookings', auth('customer'), (req, res) => res.json(svc.listGroups(req.auth.id)));
   app.get('/api/groups/:gid', auth('customer'), (req, res) => res.json(svc.getGroup(req.auth.id, Number(req.params.gid))));
   app.get('/api/bookings/:id/cancel-quote', auth('customer'), (req, res) => res.json(svc.cancelQuote(req.auth.id, Number(req.params.id))));
+  app.post('/api/bookings/:id/new-code', auth('customer'), (req, res) => res.json(svc.newCode(req.auth.id, Number(req.params.id))));
+  // One-time-ish download link (5 min, this file only) so invoices / CSVs can open in the browser without the login token in the URL.
+  app.post('/api/download-link', auth('customer'), (req, res) => {
+    const path = String(req.body?.path || '');
+    if (!/^\/api\/(groups\/\d+\/invoice|business\/(invoice|attendance\.csv))(\?[\w=&.-]*)?$/.test(path)) throw new svc.ApiError(400, 'Not a downloadable file');
+    const exp = Date.now() + 5 * 60e3;
+    const pathname = path.split('?')[0];
+    const sig = crypto.createHmac('sha256', SECRET).update(`${req.auth.role}|${req.auth.id}|${pathname}|${exp}`).digest('base64url');
+    res.json({ url: `${path}${path.includes('?') ? '&' : '?'}dl=${req.auth.id}.${exp}.${sig}` });
+  });
   app.post('/api/bookings/:id/cancel', auth('customer'), (req, res) => res.json(svc.cancelBooking(req.auth.id, Number(req.params.id))));
   app.post('/api/bookings/:id/rate', auth('customer'), (req, res) => res.json(svc.rateWorker(req.auth.id, Number(req.params.id), req.body.stars)));
   app.get('/api/groups/:gid/invoice', auth('customer'), (req, res) => res.type('html').send(invoiceHtml(svc.getGroup(req.auth.id, Number(req.params.gid)), svc.getUser(req.auth.id))));
@@ -152,8 +171,8 @@ export function createApp() {
   // ---------- worker ID check (Aadhaar Secure QR + selfie) ----------
   app.get('/api/workers/me/kyc', W, (req, res) => res.json(kyc.kycStatus(req.auth.id)));
   app.post('/api/workers/me/kyc', W, (req, res) => res.json(kyc.submitKyc(req.auth.id, req.body || {})));
-  app.get('/api/workers/:id/photo', (req, res) => {
-    const img = kyc.workerPhoto(Number(req.params.id));
+  app.get('/api/photos/:token', (req, res) => {
+    const img = kyc.workerPhoto(req.params.token);
     if (!img) return res.sendStatus(404);
     res.set('cache-control', 'public, max-age=3600').type('image/jpeg').send(Buffer.from(img));
   });

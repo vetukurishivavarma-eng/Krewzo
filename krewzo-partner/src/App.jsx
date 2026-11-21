@@ -242,6 +242,7 @@ function Main({ t, lang, setLang, onLogout }) {
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => () => clearTimeout(retry.current), []);
+  useEffect(() => { const id = setInterval(() => loadRef.current(), 5 * 60e3); return () => clearInterval(id); }, []); // scheduled jobs become current on time
   useEffect(() => {
     setupPush(() => loadRef.current());
     const l = onNativeRefresh(() => loadRef.current()); // accepted / skipped from the island or lock screen
@@ -406,6 +407,7 @@ function HomeTab({ t, lang, home, online, busy, geoErr, onToggle, onReload }) {
       {!w.kyc_verified && <KycCard t={t} onVerified={onReload} />}
       {geoErr && <Notice icon={MapPinOff}>{t.location_off}</Notice>}
       <AlertsSetup t={t} />
+      <Upcoming t={t} jobs={home.upcoming || []} />
 
       <section className="grid grid-cols-5 gap-3">
         <div className="col-span-3 rounded-3xl bg-surface border border-line p-4">
@@ -427,6 +429,28 @@ function HomeTab({ t, lang, home, online, busy, geoErr, onToggle, onReload }) {
         <ChevronRight className="text-muted" />
       </a>
     </div>
+  );
+}
+
+// Scheduled jobs already accepted; each becomes the current job 2 hours before its slot.
+function Upcoming({ t, jobs }) {
+  if (!jobs.length) return null;
+  return (
+    <section className="rounded-3xl bg-surface border border-line p-4">
+      <div className="text-sm font-bold text-muted mb-2">{t.upcoming}</div>
+      <div className="flex flex-col divide-y divide-line">
+        {jobs.map((j) => (
+          <div key={j.id} className="py-2.5 flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-raise flex items-center justify-center text-2xl">{TRADE_TAGS[j.trade_tag]?.icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold">{new Date(j.scheduled_at).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>
+              <div className="text-sm text-muted truncate">{t.TRADES[j.trade_tag]} · {parseInt(j.duration)} {t.hours} · {j.address}</div>
+            </div>
+            <div className="num font-bold text-mint">{rupees(j.worker_payout)}</div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

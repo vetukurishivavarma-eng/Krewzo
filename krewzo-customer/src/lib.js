@@ -23,6 +23,14 @@ export async function api(method, path, body) {
   return data;
 }
 
+// Invoices / CSVs open in the browser with a 5-minute link for that one file (never the login token in a URL).
+export async function openDownload(path) {
+  const { url } = await api('POST', '/download-link', { path: '/api' + path });
+  const a = document.createElement('a');
+  a.href = getServer() + url; a.target = '_blank'; a.rel = 'noreferrer';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
 export const connectSocket = () => io(getServer() || undefined, { auth: { token: getToken() }, transports: ['websocket', 'polling'] });
 
 // ---------- push (worker accepted / can't come / arrived) ----------

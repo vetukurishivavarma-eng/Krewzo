@@ -196,3 +196,11 @@ const PUSH_TEXT = {
   HI: { push_on: 'जॉब अलर्ट चालू हैं', push_off: 'इस फ़ोन पर जॉब अलर्ट बंद हैं', push_fix: 'ठीक करें', push_blocked: 'सूचनाएँ बंद हैं। सेटिंग्स में चालू करें।' },
 };
 for (const l of Object.keys(PUSH_TEXT)) Object.assign(DICT[l], PUSH_TEXT[l]);
+
+// Code lock, finish too early, upcoming scheduled jobs.
+const SAFETY_TEXT = {
+  EN: { codes_locked: 'Codes are locked after too many wrong tries. Ask the customer to make a new code in their app.', too_early: 'The finish code works 15 minutes after the start.', upcoming: 'Upcoming jobs' },
+  TE: { codes_locked: 'ఎక్కువ సార్లు తప్పు కోడ్ వల్ల కోడ్‌లు లాక్ అయ్యాయి. కస్టమర్‌ని యాప్‌లో కొత్త కోడ్ చేయమనండి.', too_early: 'పని మొదలైన 15 నిమిషాల తర్వాతే FINISH కోడ్ పనిచేస్తుంది.', upcoming: 'రాబోయే పనులు' },
+  HI: { codes_locked: 'बहुत बार गलत कोड से कोड लॉक हो गए। ग्राहक से ऐप में नया कोड बनवाएँ।', too_early: 'FINISH कोड काम शुरू होने के 15 मिनट बाद चलेगा।', upcoming: 'आने वाले काम' },
+};
+for (const l of Object.keys(SAFETY_TEXT)) Object.assign(DICT[l], SAFETY_TEXT[l]);

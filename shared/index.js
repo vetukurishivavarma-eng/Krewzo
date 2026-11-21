@@ -4,7 +4,10 @@
 export const DEFAULT_LOCATION = { lat: 17.4486, lng: 78.3908, label: 'Madhapur, Hyderabad' };
 export const DISPATCH_RADIUS_KM = 3;
 export const MAX_WORKERS = 15;
-export const HANDSHAKE_MAX_FAILS = 5;
+export const HANDSHAKE_MAX_FAILS = 5;     // wrong tries before the code changes
+export const HANDSHAKE_LOCK_FAILS = 10;   // wrong tries in total before codes lock until the customer makes a new one
+export const FINISH_MIN_MINUTES = 15;     // the FINISH code is refused this soon after START (blocks "pay me now, I'll come back")
+export const SCHEDULE_LEAD_HOURS = 2;     // a scheduled job becomes the worker's current job this long before its slot
 
 export const SKILL_TIERS = {
   TIER_1: { id: 'TIER_1', rank: 1, label: 'General Helper', rate2h: 299, icon: '🧰', blurb: 'Loading, cleaning, shifting, helping' },

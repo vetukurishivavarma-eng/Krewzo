@@ -23,7 +23,10 @@ export default function ActiveJob({ t, lang, job, onChange, onDone }) {
       onChange(r.booking);
       return true;
     } catch (e) {
-      errorBuzz(); vibrate([100, 80, 100]); speak(lang, 'wrong');
+      errorBuzz(); vibrate([100, 80, 100]);
+      if (e.status === 423) { setErr(t.codes_locked); return false; }
+      if (e.data?.code === 'TOO_EARLY') { setErr(t.too_early); return false; }
+      speak(lang, 'wrong');
       setErr(e.data?.rotated ? t.new_code : `${t.wrong} — ${e.data?.attempts_left ?? ''} ${t.tries_left}`);
       return false;
     }
