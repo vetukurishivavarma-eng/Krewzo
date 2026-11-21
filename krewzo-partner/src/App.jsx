@@ -298,7 +298,8 @@ function Main({ t, lang, setLang, onLogout }) {
   if (online && offers[0] && !active) {
     return <JobAlert t={t} lang={lang} offer={offers[0]} count={offers.length}
       onAccept={async () => { try { setActive(await api('POST', `/bookings/${offers[0].booking_id}/accept`)); setOffers([]); setTab('home'); } catch { setOffers((l) => l.slice(1)); } }}
-      onSkip={async () => { const id = offers[0].booking_id; setOffers((l) => l.slice(1)); api('POST', `/bookings/${id}/skip`).catch(() => {}); }} />;
+      onSkip={async () => { const id = offers[0].booking_id; setOffers((l) => l.slice(1)); api('POST', `/bookings/${id}/skip`).catch(() => {}); }}
+      onTimeout={() => { const id = offers[0].booking_id; setOffers((l) => l.filter((x) => x.booking_id !== id)); }} />;
   }
 
   const w = home.worker;

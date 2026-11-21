@@ -8,16 +8,20 @@ const RING_S = 30;
 
 // Incoming job, full screen: countdown ring, what you earn, what / where / who, slide to accept.
 // Same look as the native lock-screen alert and the island, so it feels like one product.
-export default function JobAlert({ t, lang, offer, count, onAccept, onSkip }) {
+// The server owns the deadline (expires_at) and withdraws the offer with job:taken when it passes.
+export default function JobAlert({ t, lang, offer, count, onAccept, onSkip, onTimeout }) {
   const hours = parseInt(offer.duration);
   const say = () => speak(lang, 'job', { ...offer, hours });
-  const [left, setLeft] = useState(RING_S);
+  // Clamp: a phone clock that is off shouldn't show a silly countdown.
+  const secsLeft = () => Math.max(0, Math.min(RING_S, Math.ceil((Date.parse(offer.expires_at) - Date.now()) / 1000) || RING_S));
+  const [left, setLeft] = useState(secsLeft);
   useEffect(() => {
-    setLeft(RING_S);
+    setLeft(secsLeft());
     const ring = setInterval(chime, 6000); // keep ringing until the worker decides
-    const tick = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
-    return () => { clearInterval(ring); clearInterval(tick); };
-  }, [offer.booking_id]);
+    const tick = setInterval(() => setLeft(secsLeft()), 1000);
+    const gone = setTimeout(onTimeout, (RING_S + 4) * 1000); // backstop if the socket missed the server's withdrawal
+    return () => { clearInterval(ring); clearInterval(tick); clearTimeout(gone); };
+  }, [offer.booking_id]); // eslint-disable-line
 
   const when = offer.booking_mode === 'SCHEDULED' && new Date(offer.scheduled_at).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
   const R = 76, C = 2 * Math.PI * R;

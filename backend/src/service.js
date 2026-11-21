@@ -162,11 +162,16 @@ function eligible(w, b) {
 
 // Before accepting, the worker sees the customer's first name and locality only (full address after accept).
 const area = (addr) => addr.split(',').map((x) => x.trim()).filter(Boolean).slice(-2).join(', ');
-export function offerView(b, distance_km) {
+// An offer rings for 30 s; after that it counts as missed (same as skip: never re-offered, because every
+// location ping re-runs dispatch and would ring the phone forever).
+export const OFFER_TTL_S = Number(process.env.OFFER_TTL_S) || 30; // tests shorten it
+const offerExpiry = (offeredAt) => new Date(Date.parse(offeredAt) + OFFER_TTL_S * 1000).toISOString();
+
+export function offerView(b, distance_km, offeredAt = now()) {
   return {
     booking_id: b.id, payout: b.worker_payout, distance_km: Math.round(distance_km * 10) / 10, duration: b.duration,
     trade_tag: b.trade_tag, skill_tier: b.skill_tier, booking_mode: b.booking_mode, scheduled_at: b.scheduled_at, addons: b.addons,
-    customer_name: (getUser(b.customer_id)?.name || '').split(' ')[0], area: area(b.address),
+    customer_name: (getUser(b.customer_id)?.name || '').split(' ')[0], area: area(b.address), expires_at: offerExpiry(offeredAt),
   };
 }
 
@@ -176,10 +181,12 @@ const offerPush = (o) => ({ dataOnly: true, data: { type: 'job_offer', ...o, add
 function offer(w, b, d) {
   const prev = db.prepare('SELECT status FROM job_offers WHERE booking_id = ? AND worker_id = ?').get(b.id, w.id);
   if (prev && prev.status !== 'EXPIRED') return false; // never re-offer a job the worker skipped or dropped
+  const at = now();
   db.prepare(`INSERT INTO job_offers (booking_id, worker_id, status, distance_km, created_at) VALUES (?,?,?,?,?)
     ON CONFLICT (booking_id, worker_id) DO UPDATE SET status = 'OFFERED', distance_km = excluded.distance_km, created_at = excluded.created_at`)
-    .run(b.id, w.id, 'OFFERED', d, now());
-  const o = offerView(b, d);
+    .run(b.id, w.id, 'OFFERED', d, at);
+  const o = offerView(b, d, at);
+  setTimeout(() => missOffer(w.id, b.id, at), OFFER_TTL_S * 1000 + 1500).unref();
   hooks.emit(`worker:${w.id}`, 'job:offer', o);
   sendPush('workers', w, offerPush(o));
   if (!hooks.isConnected(w.id)) hooks.notifyWhatsApp(w, 'offer', o);
@@ -208,10 +215,21 @@ export function dispatchToWorker(workerId) {
   return n;
 }
 
+const fresh = (offeredAt) => Date.now() < Date.parse(offerExpiry(offeredAt)) + 1500;
+
 export function openOffers(workerId) {
-  return db.prepare(`SELECT b.*, o.distance_km FROM job_offers o JOIN bookings b ON b.id = o.booking_id
+  return db.prepare(`SELECT b.*, o.distance_km, o.created_at AS offered_at FROM job_offers o JOIN bookings b ON b.id = o.booking_id
     WHERE o.worker_id = ? AND o.status = 'OFFERED' AND b.status = 'SEARCHING' ORDER BY o.created_at DESC`).all(workerId)
-    .map((r) => offerView(parseBooking(r), r.distance_km));
+    .filter((r) => fresh(r.offered_at)) // the timer below may not have fired yet (or the server restarted)
+    .map((r) => offerView(parseBooking(r), r.distance_km, r.offered_at));
+}
+
+// Timer ran out: drop it on the worker's phone (app via socket, island / lock screen via push).
+function missOffer(workerId, bookingId, offeredAt) {
+  const r = db.prepare("UPDATE job_offers SET status = 'SKIPPED' WHERE booking_id = ? AND worker_id = ? AND status = 'OFFERED' AND created_at = ?").run(bookingId, workerId, offeredAt);
+  if (!r.changes) return; // accepted, skipped or taken already
+  hooks.emit(`worker:${workerId}`, 'job:taken', { booking_id: bookingId });
+  sendPush('workers', getWorker(workerId), { dataOnly: true, ttlSec: 60, data: { type: 'job_taken', booking_id: bookingId } });
 }
 
 function expireOffers(bookingId, exceptWorker) {
@@ -235,8 +253,8 @@ export function acceptJob(workerId, bookingId) {
   if (!w.kyc_verified) fail(403, 'KYC not verified yet');
   if (!w.is_online) fail(409, 'Go ON DUTY first');
   if (isBusy(w.id)) fail(409, 'Finish your current job first');
-  const o = db.prepare('SELECT status FROM job_offers WHERE booking_id = ? AND worker_id = ?').get(bookingId, w.id);
-  if (!o || o.status !== 'OFFERED') fail(409, 'This job is no longer available');
+  const o = db.prepare('SELECT status, created_at FROM job_offers WHERE booking_id = ? AND worker_id = ?').get(bookingId, w.id);
+  if (!o || o.status !== 'OFFERED' || !fresh(o.created_at)) fail(409, 'This job is no longer available');
   const b = tx(() => {
     const cur = getBooking(bookingId);
     if (!cur || cur.status !== S.SEARCHING) fail(409, 'Job already taken');
