@@ -32,7 +32,7 @@ async function accessToken() {
 const TABLES = new Set(['workers', 'users']); // whose row holds the token
 
 // Fire-and-forget; never throws into the booking flow.
-export async function sendPush(table, row, { title, body, data = {}, ttlSec = 120, channel = 'jobs' }) {
+export async function sendPush(table, row, { title, body, data = {}, ttlSec = 120, channel = 'jobs', dataOnly = false }) {
   if (!sa || !row?.fcm_token || !TABLES.has(table)) return false;
   try {
     const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
@@ -40,9 +40,9 @@ export async function sendPush(table, row, { title, body, data = {}, ttlSec = 12
       headers: { authorization: 'Bearer ' + (await accessToken()), 'content-type': 'application/json' },
       body: JSON.stringify({ message: {
         token: row.fcm_token,
-        notification: { title, body },
-        data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
-        android: { priority: 'HIGH', ttl: `${ttlSec}s`, notification: { channel_id: channel, sound: 'default', default_vibrate_timings: true } },
+        ...(!dataOnly && { notification: { title, body } }),
+        data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v ?? '')])),
+        android: { priority: 'HIGH', ttl: `${ttlSec}s`, ...(!dataOnly && { notification: { channel_id: channel, sound: 'default', default_vibrate_timings: true } }) },
       } }),
     });
     if (r.ok) return true;

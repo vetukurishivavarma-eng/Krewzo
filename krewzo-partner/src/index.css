@@ -1,13 +1,50 @@
 @import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque";
+
+/* Krewzo partner: warm black + hi-vis lime (the colour of a safety vest), mint for money. */
+@theme {
+  --color-ink: #0e0d0b;
+  --color-surface: #1a1814;
+  --color-raise: #24211c;
+  --color-line: #2b2822;
+  --color-cream: #f4f1ea;
+  --color-muted: #9c978c;
+  --color-lime: #c8f031;
+  --color-mint: #3ddc97;
+  --color-amber: #ffb547;
+  --color-danger: #ff5a4e;
+  --font-display: "Bricolage Grotesque Variable", system-ui, sans-serif;
+}
 
 html, body, #root { height: 100%; }
-body { font-family: system-ui, "Noto Sans Telugu", "Noto Sans Devanagari", sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
-button { touch-action: manipulation; }
-button:active { transform: scale(0.97); }
+body {
+  margin: 0; background: var(--color-ink); color: var(--color-cream);
+  font-family: system-ui, "Noto Sans Telugu", "Noto Sans Devanagari", sans-serif;
+  -webkit-tap-highlight-color: transparent; user-select: none;
+}
+button, a { touch-action: manipulation; }
+button:active, a:active { transform: scale(0.97); }
+.num { font-family: var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.safe-b { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
 
-@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.6); } 100% { box-shadow: 0 0 0 40px rgba(34,197,94,0); } }
-.pulse-ring { animation: pulse-ring 1.4s ease-out infinite; }
-@keyframes flash { 0%,100% { background: #0a0a0a; } 50% { background: #14532d; } }
-.flash { animation: flash 1s ease-in-out infinite; }
+/* duty orb: sonar rings while on duty */
+@keyframes sonar { from { transform: scale(1); opacity: .55; } to { transform: scale(1.9); opacity: 0; } }
+.sonar { position: absolute; inset: 0; border-radius: 9999px; border: 2px solid var(--color-lime); animation: sonar 2.4s cubic-bezier(.2,.6,.4,1) infinite; }
+
+/* scanning bar under "looking for jobs" */
+@keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.scanbar { animation: scan 1.8s ease-in-out infinite; }
+
+/* incoming job */
+@keyframes glow { 0%,100% { opacity: .35; transform: scale(1); } 50% { opacity: .7; transform: scale(1.12); } }
+.glow { animation: glow 1.6s ease-in-out infinite; }
+@keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.breathe { animation: breathe 1.4s ease-in-out infinite; }
+@keyframes drop { from { transform: translateY(-24px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+.drop { animation: drop .38s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes rise-in { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+.rise { animation: rise-in .4s ease-out both; }
+
+/* payout confetti */
 @keyframes rise { from { transform: translateY(100vh) rotate(0); } to { transform: translateY(-20vh) rotate(540deg); } }
 .coin { position: absolute; bottom: 0; animation: rise 2.6s ease-out forwards; font-size: 2.5rem; }

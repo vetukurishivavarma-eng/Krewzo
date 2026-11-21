@@ -14,12 +14,12 @@ export default function UpdateBanner() {
     try { await installUpdate(u.url, setPct); setPct(null); } catch (e) { setErr(e.message); setPct(null); }
   };
   return (
-    <div className="fixed inset-x-3 bottom-3 z-50 rounded-2xl bg-neutral-900 text-white p-4 shadow-2xl flex items-center gap-3">
+    <div className="drop fixed inset-x-3 top-3 z-[60] max-w-md mx-auto rounded-2xl bg-ink text-paper p-3 pl-4 shadow-2xl flex items-center gap-3">
       <div className="flex-1 text-base font-bold">
-        ⬆️ New version {u.version}
-        {err && <div className="text-sm text-red-400 font-normal">{err}</div>}
+        New version {u.version}
+        {err && <div className="text-sm text-danger font-normal">{err}</div>}
       </div>
-      <button disabled={pct !== null} onClick={go} className="h-12 px-5 rounded-xl bg-emerald-600 text-white text-base font-black disabled:opacity-70">
+      <button disabled={pct !== null} onClick={go} className="h-12 px-5 rounded-xl bg-lime text-ink text-base font-black disabled:opacity-70">
         {pct === null ? 'Update' : pct + '%'}
       </button>
     </div>

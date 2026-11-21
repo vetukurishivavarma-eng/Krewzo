@@ -1,51 +1,83 @@
 import { useEffect, useState } from 'react';
-import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
+import { ChevronRight, ClipboardList, LifeBuoy, LogOut, Plus, User } from 'lucide-react';
+import { TRADE_TAGS, rupees } from '@krewzo/shared';
 import { api, clearPush, getServer, getToken, setServer, setToken, setupPush } from './lib.js';
 import Book from './Book.jsx';
 import Tracking from './Tracking.jsx';
 
+const HELPLINE = import.meta.env.VITE_HELPLINE || '18001234567';
+
+export const Wordmark = ({ size = 'text-2xl' }) => (
+  <span className={`font-display font-extrabold tracking-tight ${size}`}>krewzo<span className="inline-block w-[0.32em] h-[0.32em] rounded-full bg-lime ml-0.5 ring-2 ring-ink/80" /></span>
+);
+
 export default function App() {
   const [token, setTok] = useState(getToken);
   const [user, setUser] = useState(null);
-  const [view, setView] = useState({ name: 'book' });
+  const [tab, setTab] = useState('book');
+  const [trackId, setTrackId] = useState(null);
 
   useEffect(() => {
     if (!token) return;
     api('GET', '/me').then((r) => setUser(r.user)).catch(() => { setToken(null); setTok(null); });
-    setupPush((id) => setView({ name: 'track', id }));
+    setupPush((id) => { setTab('list'); setTrackId(id); });
   }, [token]);
 
   if (!token) return <Login onDone={(r) => { setToken(r.token); setTok(r.token); setUser(r.user); }} />;
-  if (!user) return <div className="h-full flex items-center justify-center text-slate-400">Loading…</div>;
+  if (!user) return <div className="h-full flex items-center justify-center"><Wordmark size="text-4xl" /></div>;
 
   const logout = () => { clearPush(); setToken(null); setTok(null); setUser(null); };
+  const go = (id) => { setTab(id); setTrackId(null); };
   return (
-    <div className="min-h-full max-w-md mx-auto bg-slate-50 pb-24">
-      <header className="sticky top-0 z-20 bg-slate-50/90 backdrop-blur px-4 py-3 flex items-center justify-between">
-        <button onClick={() => setView({ name: 'book' })} className="text-2xl font-black tracking-tight"><span className="text-emerald-600">Krew</span>zo</button>
-        <div className="flex items-center gap-2 text-sm">
-          <button onClick={() => setView({ name: 'list' })} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 font-medium">My bookings</button>
-          <button onClick={logout} className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold" title="Log out">{user.name[0]}</button>
-        </div>
-      </header>
-      {view.name === 'book' && <Book user={user} onBooked={(g) => { setUser((u) => ({ ...u, account_type: g.account_type })); setView({ name: 'track', id: g.id }); }} />}
-      {view.name === 'track' && <Tracking groupId={view.id} onBack={() => setView({ name: 'list' })} />}
-      {view.name === 'list' && <BookingList onOpen={(id) => setView({ name: 'track', id })} />}
+    <div className="min-h-full max-w-md mx-auto pb-24">
+      {trackId ? <Tracking groupId={trackId} onBack={() => setTrackId(null)} />
+        : tab === 'book' ? <Book user={user} onBooked={(g) => { setUser((u) => ({ ...u, account_type: g.account_type })); setTab('list'); setTrackId(g.id); }} />
+        : tab === 'list' ? <BookingList onOpen={setTrackId} onBook={() => go('book')} />
+        : <Account user={user} onLogout={logout} />}
+      <NavBar tab={tab} go={go} />
     </div>
   );
 }
 
-function ServerField({ cls }) {
+function NavBar({ tab, go }) {
+  const items = [['book', Plus, 'Book'], ['list', ClipboardList, 'Bookings'], ['account', User, 'Account']];
+  return (
+    <nav className="fixed bottom-0 inset-x-0 z-30 bg-paper/90 backdrop-blur-xl border-t border-line safe-b">
+      <div className="max-w-md mx-auto grid grid-cols-3 h-[4.25rem]">
+        {items.map(([id, Icon, label]) => (
+          <button key={id} onClick={() => go(id)} className={`flex flex-col items-center justify-center gap-1 text-xs font-bold ${tab === id ? 'text-ink' : 'text-muted'}`}>
+            <span className={`w-14 h-8 rounded-full flex items-center justify-center transition ${tab === id ? 'bg-lime' : ''}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 2} /></span>
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+export const PageHead = ({ title, sub, right }) => (
+  <header className="px-4 pt-5 pb-3 flex items-end justify-between gap-3">
+    <div>
+      <h1 className="font-display text-[1.9rem] leading-none font-extrabold tracking-tight">{title}</h1>
+      {sub && <div className="text-muted text-sm mt-1.5">{sub}</div>}
+    </div>
+    {right}
+  </header>
+);
+
+function ServerField() {
   const [open, setOpen] = useState(false);
   const [v, setV] = useState(getServer());
-  if (!open) return <button type="button" onClick={() => setOpen(true)} className={cls}>⚙️ {getServer() || 'Server'}</button>;
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className="text-xs text-muted/60">⚙ {getServer() || 'Server'}</button>;
   return (
     <div className="flex gap-2">
-      <input value={v} onChange={(e) => setV(e.target.value)} placeholder="http://192.168.1.5:4000" className="flex-1 h-12 rounded-xl border border-slate-300 bg-white text-black px-3" />
-      <button type="button" onClick={() => { setServer(v); setOpen(false); }} className="h-12 px-4 rounded-xl bg-emerald-600 text-white font-semibold">Save</button>
+      <input value={v} onChange={(e) => setV(e.target.value)} placeholder="http://192.168.1.5:4000" className="flex-1 h-12 rounded-xl border border-line bg-card px-3" />
+      <button type="button" onClick={() => { setServer(v); setOpen(false); }} className="h-12 px-4 rounded-xl bg-ink text-paper font-semibold">Save</button>
     </div>
   );
 }
+
+const input = 'h-14 w-full rounded-2xl border border-line bg-card px-4 text-lg outline-none focus:border-ink transition';
 
 function Login({ onDone }) {
   const [f, setF] = useState({ phone: '', pin: '', name: '' });
@@ -58,44 +90,95 @@ function Login({ onDone }) {
     catch (x) { if (/name/i.test(x.message)) setNeedName(true); setErr(x.message); }
   }
   return (
-    <form onSubmit={submit} className="min-h-full max-w-md mx-auto px-6 py-12 flex flex-col gap-4">
-      <div className="text-4xl font-black tracking-tight"><span className="text-emerald-600">Krew</span>zo</div>
-      <p className="text-slate-500 -mt-2">Verified daily-wage help at your door in 30 minutes. Pay only when the work is done.</p>
-      <input inputMode="numeric" autoComplete="tel" placeholder="Mobile number" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className="h-14 rounded-2xl border border-slate-200 bg-white px-4 text-lg" />
-      <input inputMode="numeric" type="password" maxLength={4} placeholder="4-digit PIN" value={f.pin} onChange={(e) => setF({ ...f, pin: e.target.value.replace(/\D/g, '') })} className="h-14 rounded-2xl border border-slate-200 bg-white px-4 text-lg tracking-widest" />
-      {needName && <input placeholder="Your name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className="h-14 rounded-2xl border border-slate-200 bg-white px-4 text-lg" />}
-      {err && <div className="text-red-600 text-sm">{err}</div>}
-      <button className="h-14 rounded-2xl bg-emerald-600 text-white text-lg font-semibold">{needName ? 'Create account' : 'Continue'}</button>
-      <p className="text-xs text-slate-400 text-center">New number? We'll create your account. Demo: 9999999999 / 1234</p>
-      <ServerField cls="text-xs text-slate-400 underline" />
+    <form onSubmit={submit} className="min-h-full max-w-md mx-auto px-6 pt-14 pb-8 flex flex-col">
+      <Wordmark size="text-3xl" />
+      <h1 className="font-display text-[2.6rem] leading-[1.02] font-extrabold tracking-tight mt-10">Skilled hands,<br /><span className="bg-lime px-1.5 -mx-1.5 rounded-lg box-decoration-clone">in 30 minutes.</span></h1>
+      <p className="text-muted mt-4">Verified daily-wage workers at your door. Your money waits in escrow until the job is done.</p>
+      <div className="flex flex-col gap-3 mt-8">
+        <div className="relative">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-muted">+91</span>
+          <input inputMode="numeric" autoComplete="tel" placeholder="Mobile number" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} className={`${input} pl-14`} />
+        </div>
+        <input inputMode="numeric" type="password" maxLength={4} placeholder="4-digit PIN" value={f.pin} onChange={(e) => setF({ ...f, pin: e.target.value.replace(/\D/g, '') })} className={`${input} tracking-widest`} />
+        {needName && <input placeholder="Your name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={input} />}
+        {err && <div className="text-danger text-sm font-semibold">{err}</div>}
+        <button className="h-14 rounded-2xl bg-ink text-paper text-lg font-bold mt-1">{needName ? 'Create account' : 'Continue'}</button>
+      </div>
+      <p className="text-xs text-muted text-center mt-4">New number? We'll create your account. Demo: 9999999999 / 1234</p>
+      <div className="mt-auto pt-8 text-center"><ServerField /></div>
     </form>
   );
 }
 
-const STATUS_LABEL = { SEARCHING: 'Finding worker', ASSIGNED: 'Worker on the way', ARRIVED: 'Worker arrived', IN_PROGRESS: 'Work in progress', COMPLETED: 'Completed', PAID_OUT: 'Paid', CANCELLED: 'Cancelled' };
+export const STATUS = {
+  SEARCHING: ['Finding worker', 'bg-amber/15 text-[#9a5b00]'], ASSIGNED: ['On the way', 'bg-lime/40 text-ink'], ARRIVED: ['At your door', 'bg-lime text-ink'],
+  IN_PROGRESS: ['Working', 'bg-forest/15 text-forest'], COMPLETED: ['Completed', 'bg-forest/15 text-forest'], PAID_OUT: ['Paid', 'bg-ink/5 text-muted'], CANCELLED: ['Cancelled', 'bg-ink/5 text-muted'],
+};
 
-function BookingList({ onOpen }) {
+function BookingList({ onOpen, onBook }) {
   const [groups, setGroups] = useState(null);
   useEffect(() => { api('GET', '/bookings').then(setGroups).catch(() => setGroups([])); }, []);
-  if (!groups) return <div className="p-6 text-slate-400">Loading…</div>;
-  if (!groups.length) return <div className="p-6 text-slate-500">No bookings yet.</div>;
   return (
-    <div className="px-4 flex flex-col gap-3">
-      {groups.map((g) => {
-        const t = g.tickets[0];
-        const statuses = [...new Set(g.tickets.map((x) => STATUS_LABEL[x.status]))].join(' · ');
-        return (
-          <button key={g.id} onClick={() => onOpen(g.id)} className="text-left rounded-2xl bg-white border border-slate-200 p-4 flex gap-3 items-center">
-            <div className="text-3xl">{TRADE_TAGS[t.trade_tag]?.icon}</div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold">{SKILL_TIERS[t.skill_tier].label} × {g.worker_count} · {t.duration}</div>
-              <div className="text-sm text-slate-500 truncate">{t.address}</div>
-              <div className="text-xs text-emerald-700 mt-0.5">{statuses}</div>
-            </div>
-            <div className="font-bold">{rupees(g.amount_total)}</div>
-          </button>
-        );
-      })}
-    </div>
+    <>
+      <PageHead title="Bookings" />
+      {!groups ? <div className="px-4 space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-3xl bg-card animate-pulse" />)}</div>
+        : !groups.length ? (
+          <div className="mx-4 mt-6 rounded-3xl bg-card border border-line p-8 text-center">
+            <div className="text-5xl">🧰</div>
+            <div className="font-display text-xl font-extrabold mt-3">No bookings yet</div>
+            <div className="text-muted text-sm mt-1">Book a helper, mason or electrician in a few taps.</div>
+            <button onClick={onBook} className="mt-5 h-12 px-6 rounded-2xl bg-ink text-paper font-bold">Book now</button>
+          </div>
+        ) : (
+          <div className="px-4 flex flex-col gap-3">
+            {groups.map((g, i) => {
+              const t = g.tickets[0];
+              const statuses = [...new Set(g.tickets.map((x) => x.status))];
+              return (
+                <button key={g.id} onClick={() => onOpen(g.id)} style={{ animationDelay: `${i * 40}ms` }} className="rise text-left rounded-3xl bg-card border border-line p-4 flex gap-3 items-center">
+                  <div className="w-14 h-14 rounded-2xl bg-paper flex items-center justify-center text-3xl">{TRADE_TAGS[t.trade_tag]?.icon}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold">{TRADE_TAGS[t.trade_tag]?.label} <span className="text-muted font-semibold">× {g.worker_count} · {t.duration}</span></div>
+                    <div className="text-sm text-muted truncate">{t.address}</div>
+                    <div className="flex gap-1.5 mt-1.5">{statuses.map((s) => <span key={s} className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${STATUS[s][1]}`}>{STATUS[s][0]}</span>)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="num font-bold">{rupees(g.amount_total)}</div>
+                    <ChevronRight size={18} className="text-muted ml-auto mt-1" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+    </>
   );
 }
+
+function Account({ user, onLogout }) {
+  return (
+    <>
+      <PageHead title="Account" />
+      <div className="px-4 flex flex-col gap-3">
+        <div className="rounded-3xl bg-ink text-paper p-5 flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-lime text-ink font-display text-2xl font-extrabold flex items-center justify-center">{user.name.split(' ').map((x) => x[0]).slice(0, 2).join('').toUpperCase()}</div>
+          <div className="min-w-0">
+            <div className="font-display text-2xl font-extrabold truncate">{user.name}</div>
+            <div className="text-paper/60">+91 {user.phone}</div>
+            <div className="text-xs font-bold mt-1 text-lime">{user.account_type === 'BUSINESS' ? `🏢 ${user.business_name || 'Business'} · GST` : '🏠 Personal'}</div>
+          </div>
+        </div>
+        {user.addresses?.length > 0 && (
+          <div className="rounded-3xl bg-card border border-line p-4">
+            <div className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Saved places</div>
+            {user.addresses.map((a) => <div key={a.label} className="py-2 border-t border-line first:border-0"><div className="font-bold text-sm">{a.label}</div><div className="text-sm text-muted truncate">{a.address}</div></div>)}
+          </div>
+        )}
+        <a href={`tel:${HELPLINE}`} className="rounded-3xl bg-card border border-line p-4 flex items-center gap-3 font-bold"><LifeBuoy className="text-danger" /><span className="flex-1">Help & support</span><ChevronRight className="text-muted" /></a>
+        <button onClick={onLogout} className="rounded-3xl border border-line p-4 flex items-center gap-3 font-bold text-muted"><LogOut /> Log out</button>
+        <div className="text-center text-xs text-muted/60 mt-2">v{__APP_VERSION__}</div>
+      </div>
+    </>
+  );
+}
+

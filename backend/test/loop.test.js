@@ -50,6 +50,8 @@ test('book -> accept -> start -> end -> paid out', async () => {
   const offer = await offered;
   assert.equal(offer.booking_id, id);
   assert.equal(offer.payout, 648);
+  assert.ok(offer.customer_name && !offer.customer_name.includes(' '), 'offer shows the customer first name only');
+  assert.ok(offer.area && offer.area.length > 0);
   sock.close();
 
   // Lakshmi (also TIER_1, nearby) was offered too but loses the race.

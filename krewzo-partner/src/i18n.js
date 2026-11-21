@@ -74,3 +74,44 @@ export const SAY = {
     started: 'काम शुरू हो गया।', wrong: 'गलत कोड। फिर से कोशिश करें।',
   },
 };
+
+// Added with the 2.0 redesign: names for every icon, plus native-alert text.
+const MORE = {
+  EN: {
+    welcome: 'Welcome, partner', welcome_sub: 'Verified work near you. Paid to UPI the minute you finish.',
+    hello: 'Hello', you_earn: 'You earn', slide: 'Slide to accept', taken: 'Job already taken',
+    home: 'Home', earnings: 'Earnings', profile: 'Profile', rating: 'Rating', language: 'Language', logout: 'Log out',
+    alerts_title: 'Never miss a job', alerts_body: 'Let Krewzo ring full screen and pop up over other apps, like a phone call.',
+    allow_popup: 'Allow pop-up', allow_full: 'Allow full screen', alerts_ok: 'Big job alerts are on',
+    on_way: 'On the way', at_door: 'At door', working_step: 'Working', paid_step: 'Paid',
+    open_maps: 'Directions', for_customer: 'Job for', scanning: 'Looking for jobs near you', within: 'within 3 km',
+    level: 'Level', skills: 'Skills', help_line: 'Call Krewzo help', sec: 's',
+    TRADES: { HELPER: 'General help', LOADING: 'Loading / shifting', CLEANING: 'Cleaning', GARDEN: 'Garden work', MASON: 'Mason help', PAINTER: 'Painting', PLUMBER: 'Plumbing', ELECTRICIAN: 'Electrical', CARPENTER: 'Carpentry' },
+    TIERS: { TIER_1: 'Helper', TIER_2: 'Semi-skilled', TIER_3: 'Skilled' },
+  },
+  TE: {
+    welcome: 'స్వాగతం', welcome_sub: 'దగ్గర్లో పని. పని అయిన వెంటనే UPI కి డబ్బు.',
+    hello: 'నమస్కారం', you_earn: 'మీ సంపాదన', slide: 'ఒప్పుకోవడానికి జరపండి', taken: 'ఈ పని వేరే వాళ్ళు తీసుకున్నారు',
+    home: 'హోమ్', earnings: 'సంపాదన', profile: 'ప్రొఫైల్', rating: 'రేటింగ్', language: 'భాష', logout: 'లాగ్ అవుట్',
+    alerts_title: 'ఏ పనీ మిస్ అవ్వదు', alerts_body: 'ఫోన్ కాల్ లాగా పెద్ద స్క్రీన్‌పై రింగ్ అవ్వడానికి అనుమతి ఇవ్వండి.',
+    allow_popup: 'పాప్-అప్ అనుమతి', allow_full: 'ఫుల్ స్క్రీన్ అనుమతి', alerts_ok: 'పెద్ద అలర్ట్‌లు ఆన్',
+    on_way: 'దారిలో', at_door: 'ఇంటి దగ్గర', working_step: 'పని', paid_step: 'డబ్బు',
+    open_maps: 'దారి', for_customer: 'కస్టమర్', scanning: 'దగ్గర్లో పని కోసం చూస్తున్నాం', within: '3 కి.మీ లోపు',
+    level: 'స్థాయి', skills: 'పనులు', help_line: 'Krewzo సహాయం', sec: 'సె',
+    TRADES: { HELPER: 'సహాయకుడు', LOADING: 'లోడింగ్ / షిఫ్టింగ్', CLEANING: 'శుభ్రం', GARDEN: 'తోట పని', MASON: 'మేస్త్రీ పని', PAINTER: 'పెయింటింగ్', PLUMBER: 'ప్లంబింగ్', ELECTRICIAN: 'ఎలక్ట్రికల్', CARPENTER: 'వడ్రంగి పని' },
+    TIERS: { TIER_1: 'సహాయకుడు', TIER_2: 'సెమీ-స్కిల్డ్', TIER_3: 'నిపుణుడు' },
+  },
+  HI: {
+    welcome: 'स्वागत है', welcome_sub: 'पास में काम। काम खत्म होते ही UPI पर पैसे।',
+    hello: 'नमस्ते', you_earn: 'आपकी कमाई', slide: 'स्वीकार करने के लिए खिसकाएँ', taken: 'यह काम किसी और ने ले लिया',
+    home: 'होम', earnings: 'कमाई', profile: 'प्रोफ़ाइल', rating: 'रेटिंग', language: 'भाषा', logout: 'लॉग आउट',
+    alerts_title: 'कोई काम न छूटे', alerts_body: 'फ़ोन कॉल की तरह पूरी स्क्रीन पर घंटी बजने की अनुमति दें।',
+    allow_popup: 'पॉप-अप की अनुमति', allow_full: 'फुल स्क्रीन की अनुमति', alerts_ok: 'बड़े अलर्ट चालू हैं',
+    on_way: 'रास्ते में', at_door: 'दरवाज़े पर', working_step: 'काम', paid_step: 'पैसे',
+    open_maps: 'रास्ता', for_customer: 'ग्राहक', scanning: 'पास में काम ढूँढ रहे हैं', within: '3 किमी के अंदर',
+    level: 'स्तर', skills: 'काम', help_line: 'Krewzo मदद', sec: 'से',
+    TRADES: { HELPER: 'सामान्य मदद', LOADING: 'लोडिंग / शिफ्टिंग', CLEANING: 'सफ़ाई', GARDEN: 'बाग़बानी', MASON: 'राजमिस्त्री मदद', PAINTER: 'पेंटिंग', PLUMBER: 'प्लंबिंग', ELECTRICIAN: 'बिजली का काम', CARPENTER: 'बढ़ईगिरी' },
+    TIERS: { TIER_1: 'हेल्पर', TIER_2: 'अर्ध-कुशल', TIER_3: 'कुशल कारीगर' },
+  },
+};
+for (const l of Object.keys(MORE)) Object.assign(DICT[l], MORE[l]);

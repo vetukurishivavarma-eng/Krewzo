@@ -31,7 +31,7 @@ export default function MapPin({ lat, lng, onMove, others = [], height = 220 }) 
   useEffect(() => {
     layer.current.clearLayers();
     others.forEach((o) => {
-      L.polyline([[o.lat, o.lng], [lat, lng]], { color: '#059669', weight: 3, dashArray: '6 8' }).addTo(layer.current);
+      L.polyline([[o.lat, o.lng], [lat, lng]], { color: '#15130f', weight: 3, dashArray: '6 8' }).addTo(layer.current);
       L.marker([o.lat, o.lng], { icon: pin(o.emoji) }).addTo(layer.current);
     });
     if (others.length) map.current.fitBounds(L.latLngBounds([[lat, lng], ...others.map((o) => [o.lat, o.lng])]).pad(0.3), { maxZoom: 16 });

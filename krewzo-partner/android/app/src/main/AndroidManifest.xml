@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -24,6 +25,28 @@
 
         </activity>
 
+        <!-- Incoming job: full screen over the lock screen, rings until accepted / skipped / timed out. -->
+        <activity
+            android:name=".JobAlertActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="in.krewzo.partner.alert"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+        <receiver android:name=".JobActionReceiver" android:exported="false" />
+
+        <!-- Our FCM service replaces the push plugin's so job offers ring natively. -->
+        <service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="remove" />
+        <service android:name=".JobPushService" android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -43,4 +66,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

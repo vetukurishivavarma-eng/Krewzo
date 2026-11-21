@@ -108,3 +108,18 @@ export function speak(lang, key, arg) {
 
 // Set VITE_HELPLINE to the real support number before launch.
 export const HELPLINE = import.meta.env.VITE_HELPLINE || '18001234567';
+
+// ---------- native job alerts (full-screen ring + island) ----------
+const Native = registerPlugin('Krewzo');
+// The native side accepts/skips without the web layer, so it needs the session and the worker's words.
+export function syncNative(t) {
+  if (!isNative) return;
+  const token = getToken();
+  const strings = { new_job: t.new_job, accept: t.accept, skip: t.skip, km: t.km, hours: t.hours, slide: t.slide, you_earn: t.you_earn, taken: t.taken };
+  for (const [k, v] of Object.entries(t.TRADES)) strings['trade_' + k] = v;
+  Native.setSession(token ? { server: getServer(), token, strings } : {}).catch(() => {});
+}
+export const alertStatus = () => (isNative ? Native.alertStatus().catch(() => null) : Promise.resolve(null));
+export const openOverlaySettings = () => Native.openOverlaySettings().catch(() => {});
+export const openFullScreenSettings = () => Native.openFullScreenSettings().catch(() => {});
+export const onNativeRefresh = (fn) => (isNative ? Native.addListener('refresh', fn) : null);

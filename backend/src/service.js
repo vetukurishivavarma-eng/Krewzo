@@ -160,18 +160,18 @@ function eligible(w, b) {
   return d <= DISPATCH_RADIUS_KM ? d : null;
 }
 
+// Before accepting, the worker sees the customer's first name and locality only (full address after accept).
+const area = (addr) => addr.split(',').map((x) => x.trim()).filter(Boolean).slice(-2).join(', ');
 export function offerView(b, distance_km) {
   return {
     booking_id: b.id, payout: b.worker_payout, distance_km: Math.round(distance_km * 10) / 10, duration: b.duration,
     trade_tag: b.trade_tag, skill_tier: b.skill_tier, booking_mode: b.booking_mode, scheduled_at: b.scheduled_at, addons: b.addons,
+    customer_name: (getUser(b.customer_id)?.name || '').split(' ')[0], area: area(b.address),
   };
 }
 
-const PUSH_TEXT = { EN: ['New job', 'km'], TE: ['కొత్త పని', 'కి.మీ'], HI: ['नया काम', 'किमी'] };
-function offerPush(lang, o) {
-  const [title, km] = PUSH_TEXT[lang] || PUSH_TEXT.EN;
-  return { title: `🔔 ${title} · ₹${o.payout}`, body: `${TRADE_TAGS[o.trade_tag]?.icon || ''} ${o.distance_km} ${km} · ${o.duration}`, data: { booking_id: o.booking_id } };
-}
+// Data-only: the partner app's native service rings full-screen / shows the island itself, in the worker's language.
+const offerPush = (o) => ({ dataOnly: true, data: { type: 'job_offer', ...o, addons: o.addons.join(','), scheduled_at: o.scheduled_at || '' } });
 
 function offer(w, b, d) {
   const prev = db.prepare('SELECT status FROM job_offers WHERE booking_id = ? AND worker_id = ?').get(b.id, w.id);
@@ -181,7 +181,7 @@ function offer(w, b, d) {
     .run(b.id, w.id, 'OFFERED', d, now());
   const o = offerView(b, d);
   hooks.emit(`worker:${w.id}`, 'job:offer', o);
-  sendPush('workers', w, offerPush(w.language, o));
+  sendPush('workers', w, offerPush(o));
   if (!hooks.isConnected(w.id)) hooks.notifyWhatsApp(w, 'offer', o);
   return true;
 }
@@ -217,7 +217,10 @@ export function openOffers(workerId) {
 function expireOffers(bookingId, exceptWorker) {
   const others = db.prepare("SELECT worker_id FROM job_offers WHERE booking_id = ? AND status = 'OFFERED' AND worker_id != ?").all(bookingId, exceptWorker ?? -1);
   db.prepare("UPDATE job_offers SET status = 'EXPIRED' WHERE booking_id = ? AND status = 'OFFERED' AND worker_id != ?").run(bookingId, exceptWorker ?? -1);
-  others.forEach((o) => hooks.emit(`worker:${o.worker_id}`, 'job:taken', { booking_id: bookingId }));
+  others.forEach((o) => {
+    hooks.emit(`worker:${o.worker_id}`, 'job:taken', { booking_id: bookingId });
+    sendPush('workers', getWorker(o.worker_id), { dataOnly: true, ttlSec: 60, data: { type: 'job_taken', booking_id: bookingId } }); // stop the ringing
+  });
 }
 
 // ---------- worker actions ----------
