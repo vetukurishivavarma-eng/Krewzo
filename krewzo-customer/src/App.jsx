@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
-import { api, getToken, setToken } from './lib.js';
+import { api, getServer, getToken, setServer, setToken } from './lib.js';
 import Book from './Book.jsx';
 import Tracking from './Tracking.jsx';
 
@@ -34,6 +34,18 @@ export default function App() {
   );
 }
 
+function ServerField({ cls }) {
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState(getServer());
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className={cls}>⚙️ {getServer() || 'Server'}</button>;
+  return (
+    <div className="flex gap-2">
+      <input value={v} onChange={(e) => setV(e.target.value)} placeholder="http://192.168.1.5:4000" className="flex-1 h-12 rounded-xl border border-slate-300 bg-white text-black px-3" />
+      <button type="button" onClick={() => { setServer(v); setOpen(false); }} className="h-12 px-4 rounded-xl bg-emerald-600 text-white font-semibold">Save</button>
+    </div>
+  );
+}
+
 function Login({ onDone }) {
   const [f, setF] = useState({ phone: '', pin: '', name: '' });
   const [err, setErr] = useState('');
@@ -54,6 +66,7 @@ function Login({ onDone }) {
       {err && <div className="text-red-600 text-sm">{err}</div>}
       <button className="h-14 rounded-2xl bg-emerald-600 text-white text-lg font-semibold">{needName ? 'Create account' : 'Continue'}</button>
       <p className="text-xs text-slate-400 text-center">New number? We'll create your account. Demo: 9999999999 / 1234</p>
+      <ServerField cls="text-xs text-slate-400 underline" />
     </form>
   );
 }

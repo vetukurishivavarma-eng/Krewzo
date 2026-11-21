@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --port 5174 --host",
     "build": "vite build",
-    "preview": "vite preview --port 5174"
+    "preview": "vite preview --port 5174",
+    "apk": "vite build && cap sync android && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@krewzo/shared": "*",
@@ -16,6 +17,9 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "@tailwindcss/vite": "^4.1.0",
     "@vitejs/plugin-react": "^4.3.4",
     "tailwindcss": "^4.1.0",

@@ -15,6 +15,12 @@ export function createApp() {
   const server = http.createServer(app);
   const io = new Server(server, { cors: { origin: true } });
 
+  // APKs load from https://localhost (Capacitor), so the API must allow cross-origin calls. Auth is a bearer token, not cookies.
+  app.use((req, res, next) => {
+    res.set({ 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization', 'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE' });
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
   app.use(express.json({ limit: '100kb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
   const auth = (role) => (req, _res, next) => {

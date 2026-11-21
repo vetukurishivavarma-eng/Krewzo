@@ -49,7 +49,7 @@ export default function Tracking({ groupId, onBack }) {
           <div className="text-xl font-black">{TRADE_TAGS[first.trade_tag]?.icon} {SKILL_TIERS[first.skill_tier].label} × {g.worker_count}</div>
           <div className="text-sm text-slate-500">{first.duration} · {first.booking_mode === 'SCHEDULED' ? new Date(first.scheduled_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Instant'} · {first.address}</div>
         </div>
-        <a href={`/api/groups/${g.id}/invoice?token=${encodeURIComponent(getToken())}`} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-full bg-white border border-slate-200">🧾 {g.account_type === 'BUSINESS' ? 'GST invoice' : 'Invoice'}</a>
+        <a href={`${getServer()}/api/groups/${g.id}/invoice?token=${encodeURIComponent(getToken())}`} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-full bg-white border border-slate-200">🧾 {g.account_type === 'BUSINESS' ? 'GST invoice' : 'Invoice'}</a>
       </div>
 
       {assigned.length > 0 && <MapPin lat={first.lat} lng={first.lng} height={180} others={assigned.map((t) => ({ lat: t.worker.lat, lng: t.worker.lng, emoji: '👷' }))} />}

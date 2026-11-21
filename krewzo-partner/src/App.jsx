@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
 import { DICT, LANGS } from './i18n.js';
-import { api, chime, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE } from './lib.js';
+import { api, getServer, setServer, chime, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE } from './lib.js';
 import JobAlert from './JobAlert.jsx';
 import ActiveJob from './ActiveJob.jsx';
 import Passbook from './Passbook.jsx';
@@ -56,6 +56,18 @@ export function Keypad({ value, onChange, max }) {
     <div className="grid grid-cols-3 gap-3">
       {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) =>
         k ? <button key={i} onClick={() => press(k)} className="h-20 rounded-2xl bg-white/10 text-white text-4xl font-black">{k}</button> : <div key={i} />)}
+    </div>
+  );
+}
+
+function ServerField({ cls }) {
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState(getServer());
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className={cls}>⚙️ {getServer() || 'Server'}</button>;
+  return (
+    <div className="flex gap-2">
+      <input value={v} onChange={(e) => setV(e.target.value)} placeholder="http://192.168.1.5:4000" className="flex-1 h-12 rounded-xl border border-slate-300 bg-white text-black px-3" />
+      <button type="button" onClick={() => { setServer(v); setOpen(false); }} className="h-12 px-4 rounded-xl bg-emerald-600 text-white font-semibold">Save</button>
     </div>
   );
 }
@@ -132,6 +144,7 @@ function Login({ t, lang, setLang, onDone }) {
         {isPin && <button onClick={() => { setStep('phone'); setPin(''); }} className="h-20 flex-1 rounded-3xl bg-white/10 text-2xl font-bold">⬅️ {t.back}</button>}
         {!isPin && <button disabled={phone.length !== 10} onClick={() => setStep('pin')} className="h-20 flex-1 rounded-3xl bg-emerald-500 text-black text-3xl font-black disabled:opacity-30">{t.next} ➡️</button>}
       </div>
+      <div className="mt-6"><ServerField cls="text-sm text-white/40 underline" /></div>
     </div>
   );
 }
