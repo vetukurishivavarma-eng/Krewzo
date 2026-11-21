@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { SKILL_TIERS, TRADE_TAGS, haversineKm, rupees } from '@krewzo/shared';
-import { api, connectSocket, getToken } from './lib.js';
+import { api, connectSocket, getServer, getToken } from './lib.js';
 import HandshakeSheet from './HandshakeSheet.jsx';
 import MapPin from './MapPin.jsx';
 
