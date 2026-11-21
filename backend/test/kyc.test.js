@@ -12,7 +12,7 @@ const uidai = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const forger = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const certDir = fs.mkdtempSync(path.join(os.tmpdir(), 'krewzo-uidai-'));
 fs.writeFileSync(path.join(certDir, 'uidai-test.pem'), uidai.publicKey.export({ type: 'spki', format: 'pem' }));
-Object.assign(process.env, { KREWZO_DB: ':memory:', UIDAI_CERT_DIR: certDir, AUTO_KYC: '1', ADMIN_KEY: 'ops-test' });
+Object.assign(process.env, { KREWZO_DB: ':memory:', UIDAI_CERT_DIR: certDir, AUTO_KYC: '1', ADMIN_KEY: 'ops-test', UIDAI_STRICT: '1' });
 
 const PHOTO = fs.readFileSync(new URL('./fixtures/face.jp2', import.meta.url));
 const mobileHash = (mobile, last4) => {
@@ -57,6 +57,13 @@ test('edited / home-made QR fails the UIDAI signature check', async () => {
   const r = await submit(t, secureQr({ mobile: '9876500002', signer: forger.privateKey }));
   assert.equal(r.status, 400);
   assert.equal(r.body.code, 'BAD_SIGNATURE');
+
+  // Not strict (until real cards are confirmed): a failed signature goes to ops review, never auto-approved.
+  process.env.UIDAI_STRICT = '';
+  const soft = await submit(t, secureQr({ mobile: '9876500002', last4: '1110', signer: forger.privateKey }));
+  process.env.UIDAI_STRICT = '1';
+  assert.equal(soft.body.status, 'PENDING');
+  assert.ok(soft.body.flags.includes('SIGNATURE_FAILED'));
 });
 
 test('Aadhaar mobile must match the registered phone', async () => {

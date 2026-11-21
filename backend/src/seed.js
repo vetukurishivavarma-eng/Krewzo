@@ -19,6 +19,7 @@ export function seed() {
   WORKERS.forEach(([phone, name, tier, tags, dLat, dLng, lang], i) =>
     ins.run(phone, name, pin, tier, JSON.stringify(tags), L.lat + dLat, L.lng + dLng, 4.6 + (i % 4) / 10, 10 + i * 7, `${name.toLowerCase()}@okaxis`, lang, now()));
   db.prepare('INSERT OR IGNORE INTO users (phone, name, pin_hash, created_at) VALUES (?,?,?,?)').run('9999999999', 'Demo Customer', pin, now());
+  db.prepare("UPDATE workers SET probation_waived = 1 WHERE phone LIKE '900000000_'").run(); // demo = experienced, no probation
 }
 
 export function seedIfEmpty() {

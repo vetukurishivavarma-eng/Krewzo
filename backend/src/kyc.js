@@ -37,7 +37,8 @@ export function submitKyc(workerId, { qr, selfie, consent }) {
   let q;
   try { q = parseSecureQr(qr); } catch (e) { if (e instanceof QrError) fail(400, MSG[e.message], { code: e.message }); throw e; }
 
-  if (q.sig_ok === false) fail(400, 'This QR failed UIDAI\'s security check. Scan the QR printed by UIDAI on your Aadhaar or a fresh e-Aadhaar.', { code: 'BAD_SIGNATURE' });
+  // Strict mode refuses a failed UIDAI signature outright; otherwise ops review it (until real cards are confirmed to verify).
+  if (q.sig_ok === false && process.env.UIDAI_STRICT === '1') fail(400, 'This QR failed UIDAI\'s security check. Scan the QR printed by UIDAI on your Aadhaar or a fresh e-Aadhaar.', { code: 'BAD_SIGNATURE' });
   const mobile = mobileMatches(q, w.phone);
   if (mobile === false) fail(400, `This Aadhaar is linked to a different mobile number. Sign up with the number linked to your Aadhaar.`, { code: 'MOBILE_MISMATCH' });
   const age = ageFrom(q.dob);
@@ -50,6 +51,7 @@ export function submitKyc(workerId, { qr, selfie, consent }) {
 
   const flags = [];
   if (q.sig_ok === null) flags.push('SIGNATURE_NOT_CHECKED'); // no UIDAI certificate installed on the server yet
+  if (q.sig_ok === false) flags.push('SIGNATURE_FAILED');
   if (mobile === null) flags.push('NO_MOBILE_IN_QR');
   if (!namesMatch(q.name, w.name)) flags.push('NAME_DIFFERS');
   if (age == null) flags.push('DOB_UNREADABLE');
@@ -61,7 +63,7 @@ export function submitKyc(workerId, { qr, selfie, consent }) {
     ON CONFLICT (worker_id) DO UPDATE SET status = excluded.status, identity_hash = excluded.identity_hash, aadhaar_last4 = excluded.aadhaar_last4,
       name = excluded.name, dob = excluded.dob, gender = excluded.gender, area = excluded.area, qr_version = excluded.qr_version, sig_ok = excluded.sig_ok,
       photo = excluded.photo, selfie = excluded.selfie, flags = excluded.flags, submitted_at = excluded.submitted_at, reviewed_at = excluded.reviewed_at, note = NULL`)
-    .run(w.id, status, hash, q.aadhaar_last4, q.name, q.dob, q.gender, q.area, q.version, q.sig_ok ? 1 : -1, q.photo, photoSelfie, JSON.stringify(flags), now(), auto ? now() : null);
+    .run(w.id, status, hash, q.aadhaar_last4, q.name, q.dob, q.gender, q.area, q.version, q.sig_ok === true ? 1 : q.sig_ok === false ? 0 : -1, q.photo, photoSelfie, JSON.stringify(flags), now(), auto ? now() : null);
   if (auto) approve(w.id);
   else notifyOps('🪪 New ID check to review', `${w.name} · XXXX ${q.aadhaar_last4}${flags.length ? ' · ' + flags.length + ' flag(s)' : ''}`, 'kyc');
   return kycStatus(w.id);
@@ -103,7 +105,7 @@ export function listKyc(status = 'PENDING') {
     .map((k) => ({
       worker_id: k.worker_id, worker_name: k.worker_name, phone: k.phone, skill_tier: k.skill_tier, trade_tags: JSON.parse(k.trade_tags),
       status: k.status, aadhaar_last4: k.aadhaar_last4, name: k.name, dob: k.dob, gender: k.gender, area: k.area, qr_version: k.qr_version,
-      sig_ok: k.sig_ok === 1, flags: JSON.parse(k.flags), submitted_at: k.submitted_at, note: k.note,
+      sig_ok: k.sig_ok === 1, sig_failed: k.sig_ok === 0, flags: JSON.parse(k.flags), submitted_at: k.submitted_at, note: k.note,
       aadhaar_photo: k.photo ? photoDataUrl(Buffer.from(k.photo)) : null,
       selfie: 'data:image/jpeg;base64,' + Buffer.from(k.selfie).toString('base64'),
     }));
@@ -130,4 +132,49 @@ export function resetKyc(phone) {
   db.prepare('DELETE FROM kyc_submissions WHERE worker_id = ?').run(w.id);
   db.prepare('UPDATE workers SET kyc_verified = 0, is_online = 0, photo_url = NULL, photo_token = NULL WHERE id = ?').run(w.id);
   return publicWorker(getWorker(w.id));
+}
+
+// ---------- police verification (optional "Police verified" badge) ----------
+// The worker uploads a photo of their Police Clearance Certificate (from their state police portal or station);
+// ops check it and the badge shows to customers for a year.
+const POLICE_VALID_DAYS = 365;
+
+export function submitPolice(workerId, { image }) {
+  const w = getWorker(workerId);
+  if (!w.kyc_verified) fail(409, 'Finish the Aadhaar check first');
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(image || '');
+  if (!m) fail(400, 'Take a photo of the certificate');
+  const buf = Buffer.from(m[1], 'base64');
+  if (buf.length < 10000 || buf.length > 900_000 || buf[0] !== 0xff || buf[1] !== 0xd8) fail(400, 'Photo is not clear enough, please take it again');
+  db.prepare(`INSERT INTO police_checks (worker_id, status, image, submitted_at) VALUES (?,?,?,?)
+    ON CONFLICT (worker_id) DO UPDATE SET status = 'PENDING', image = excluded.image, submitted_at = excluded.submitted_at, reviewed_at = NULL, note = NULL`).run(w.id, 'PENDING', buf, now());
+  notifyOps('👮 Police certificate to check', `${w.name} · +91 ${w.phone}`, 'police');
+  return policeStatus(w.id);
+}
+
+export function policeStatus(workerId) {
+  const r = db.prepare('SELECT status, submitted_at, reviewed_at, valid_until, note FROM police_checks WHERE worker_id = ?').get(workerId);
+  if (!r) return { status: 'NONE' };
+  if (r.status === 'VERIFIED' && Date.parse(r.valid_until) < Date.now()) return { ...r, status: 'EXPIRED' };
+  return r;
+}
+
+export const policeVerified = (workerId) => policeStatus(workerId).status === 'VERIFIED';
+
+export function listPolice(status = 'PENDING') {
+  return db.prepare('SELECT p.*, w.name, w.phone, k.selfie FROM police_checks p JOIN workers w ON w.id = p.worker_id LEFT JOIN kyc_submissions k ON k.worker_id = p.worker_id WHERE p.status = ? ORDER BY p.submitted_at').all(status)
+    .map((r) => ({ worker_id: r.worker_id, name: r.name, phone: r.phone, status: r.status, submitted_at: r.submitted_at, note: r.note,
+      image: 'data:image/jpeg;base64,' + Buffer.from(r.image).toString('base64'),
+      selfie: r.selfie ? 'data:image/jpeg;base64,' + Buffer.from(r.selfie).toString('base64') : null }));
+}
+
+export function reviewPolice(workerId, { verified, note }) {
+  const r = db.prepare('SELECT 1 FROM police_checks WHERE worker_id = ?').get(workerId);
+  if (!r) fail(404, 'No police certificate from this worker');
+  const until = verified ? new Date(Date.now() + POLICE_VALID_DAYS * 864e5).toISOString() : null;
+  db.prepare('UPDATE police_checks SET status = ?, reviewed_at = ?, valid_until = ?, note = ? WHERE worker_id = ?').run(verified ? 'VERIFIED' : 'REJECTED', now(), until, note || null, workerId);
+  const w = getWorker(workerId);
+  sendPush('workers', w, { title: verified ? '👮 Police verified!' : 'Police certificate not accepted',
+    body: verified ? 'Customers now see the Police verified badge on your profile.' : (note || 'Please upload a clear photo of a valid certificate.'), channel: 'jobs', ttlSec: 7 * 86400, data: { type: 'police' } });
+  return policeStatus(workerId);
 }

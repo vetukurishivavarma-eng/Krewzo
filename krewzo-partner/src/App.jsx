@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BellRing, ChevronRight, Delete, Home, LifeBuoy, LogOut, MapPinOff, Power, ShieldAlert, Star, User, Wallet } from 'lucide-react';
+import { BellRing, Camera, ChevronRight, Delete, Home, LifeBuoy, LogOut, MapPinOff, Power, ShieldAlert, ShieldCheck, Sprout, Star, User, Wallet } from 'lucide-react';
 import { SKILL_TIERS, TRADE_TAGS, rupees, upiLink } from '@krewzo/shared';
 import QRCode from 'qrcode';
 import { DICT, LANGS } from './i18n.js';
@@ -325,7 +325,7 @@ function Main({ t, lang, setLang, onLogout }) {
         ? <ActiveJob t={t} lang={lang} job={active} onChange={setActive} onDone={() => { setActive(null); load(); }} />
         : <HomeTab t={t} lang={lang} home={home} online={online} busy={busy} geoErr={geoErr} dutyErr={dutyErr} onToggle={toggleDuty} onReload={load} />)}
       {tab === 'earnings' && <Passbook t={t} />}
-      {tab === 'profile' && <Profile t={t} w={w} lang={lang} setLang={setLang} onLogout={onLogout} onReload={load} />}
+      {tab === 'profile' && <Profile t={t} w={w} police={home.police} lang={lang} setLang={setLang} onLogout={onLogout} onReload={load} />}
       <NavBar t={t} tab={tab} setTab={setTab} badge={!!active} />
       {cancelled && <CancelledCard t={t} job={cancelled} onClose={() => setCancelled(null)} />}
     </div>
@@ -413,6 +413,7 @@ function HomeTab({ t, lang, home, online, busy, geoErr, dutyErr, onToggle, onRel
       {geoErr && <Notice icon={MapPinOff}>{t.location_off}</Notice>}
       <AlertsSetup t={t} />
       <Upcoming t={t} jobs={home.upcoming || []} />
+      {w.kyc_verified && home.probation?.on && <Probation t={t} p={home.probation} />}
 
       <section className="grid grid-cols-5 gap-3">
         <div className="col-span-3 rounded-3xl bg-surface border border-line p-4">
@@ -541,7 +542,64 @@ function PushStatus({ t, w, onReload }) {
   );
 }
 
-function Profile({ t, w, lang, setLang, onLogout, onReload }) {
+// New partners: first 5 jobs are daytime General Helper jobs.
+function Probation({ t, p }) {
+  return (
+    <section className="rounded-3xl bg-surface border border-line p-4">
+      <div className="flex gap-3">
+        <span className="w-11 h-11 rounded-2xl bg-mint/15 text-mint flex items-center justify-center shrink-0"><Sprout /></span>
+        <div className="flex-1"><div className="font-black">{t.new_title}</div><div className="text-sm text-muted">{t.new_body}</div></div>
+      </div>
+      <div className="flex gap-1.5 mt-3">{Array.from({ length: p.needed }, (_, i) => <span key={i} className={`h-2 flex-1 rounded-full ${i < p.done ? 'bg-mint' : 'bg-line'}`} />)}</div>
+      <div className="text-xs text-muted mt-1.5">{p.done} / {p.needed} {t.jobs_done}</div>
+    </section>
+  );
+}
+
+// Optional Police Clearance Certificate -> "Police verified" badge for a year.
+function Police({ t, w, police, onReload }) {
+  const ref = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  if (!w.kyc_verified) return null;
+  const st = police?.status || 'NONE';
+  function pick(e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    const img = new Image();
+    img.onload = async () => {
+      const scale = Math.min(1, 1400 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      setBusy(true); setErr('');
+      try { await api('POST', '/workers/me/police', { image: c.toDataURL('image/jpeg', 0.85) }); await onReload(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+    };
+    img.src = URL.createObjectURL(f);
+  }
+  return (
+    <div className={`rounded-3xl border p-4 ${st === 'VERIFIED' ? 'bg-mint/10 border-mint/30' : 'bg-surface border-line'}`}>
+      <div className="flex gap-3">
+        <ShieldCheck className={st === 'VERIFIED' ? 'text-mint shrink-0' : 'text-muted shrink-0'} />
+        <div className="flex-1">
+          <div className="font-bold">{t.police_title}</div>
+          <div className="text-sm text-muted mt-0.5">
+            {st === 'VERIFIED' ? `${t.police_ok} ${new Date(police.valid_until).toLocaleDateString('en-IN')}` : st === 'PENDING' ? t.police_pending : st === 'REJECTED' ? (police.note || t.police_rejected) : st === 'EXPIRED' ? t.police_expired : t.police_body}
+          </div>
+        </div>
+      </div>
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={pick} />
+      {['NONE', 'REJECTED', 'EXPIRED'].includes(st) && (
+        <button disabled={busy} onClick={() => ref.current.click()} className="mt-3 w-full h-12 rounded-xl bg-lime text-ink font-black flex items-center justify-center gap-2 disabled:opacity-50"><Camera size={18} /> {busy ? '…' : t.police_upload}</button>
+      )}
+      {err && <div className="text-sm text-danger mt-2">{err}</div>}
+    </div>
+  );
+}
+
+function Profile({ t, w, police, lang, setLang, onLogout, onReload }) {
   return (
     <div className="p-5 flex flex-col gap-4">
       <div className="rounded-[2rem] bg-surface border border-line p-5 flex items-center gap-4">
@@ -560,6 +618,7 @@ function Profile({ t, w, lang, setLang, onLogout, onReload }) {
 
       </div>
       <PushStatus t={t} w={w} onReload={onReload} />
+      <Police t={t} w={w} police={police} onReload={onReload} />
       <MyUpiQr t={t} w={w} />
       <div className="rounded-3xl bg-surface border border-line p-4 flex items-center justify-between">
         <div className="font-bold">{t.language}</div>

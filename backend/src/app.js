@@ -49,7 +49,7 @@ export function createApp() {
   });
   const json = (limit) => express.json({ limit, verify: (req, _res, buf) => { req.rawBody = buf; } });
   const small = json('100kb'), large = json('1mb'); // only the ID check carries a selfie photo
-  app.use((req, res, next) => (req.path === '/api/workers/me/kyc' ? large : small)(req, res, next));
+  app.use((req, res, next) => (['/api/workers/me/kyc', '/api/workers/me/police'].includes(req.path) ? large : small)(req, res, next));
 
   const auth = (role) => (req, _res, next) => {
     // Login tokens only travel in the Authorization header; file downloads use short-lived signed links (?dl=).
@@ -181,6 +181,8 @@ export function createApp() {
   // ---------- worker ID check (Aadhaar Secure QR + selfie) ----------
   app.get('/api/workers/me/kyc', W, (req, res) => res.json(kyc.kycStatus(req.auth.id)));
   app.post('/api/workers/me/kyc', W, (req, res) => res.json(kyc.submitKyc(req.auth.id, req.body || {})));
+  app.get('/api/workers/me/police', W, (req, res) => res.json(kyc.policeStatus(req.auth.id)));
+  app.post('/api/workers/me/police', W, (req, res) => res.json(kyc.submitPolice(req.auth.id, req.body || {})));
   app.get('/api/photos/:token', (req, res) => {
     const img = kyc.workerPhoto(req.params.token);
     if (!img) return res.sendStatus(404);
@@ -215,6 +217,8 @@ export function createApp() {
   app.post('/api/admin/reports/:id/resolve', (req, res) => { admin(req); res.json(safety.resolveReport(Number(req.params.id), req.body || {})); });
   app.get('/api/admin/sos', (req, res) => { admin(req); res.json(safety.listSos()); });
   app.post('/api/admin/sos/:id/handled', (req, res) => { admin(req); res.json(safety.handleSos(Number(req.params.id))); });
+  app.get('/api/admin/police', (req, res) => { admin(req); res.json(kyc.listPolice(['VERIFIED', 'REJECTED'].includes(req.query.status) ? req.query.status : 'PENDING')); });
+  app.post('/api/admin/workers/:id/police', (req, res) => { admin(req); res.json(kyc.reviewPolice(Number(req.params.id), { verified: req.body?.verified !== false, note: req.body?.note })); });
   app.post('/api/admin/kyc/reset', (req, res) => { admin(req); res.json(kyc.resetKyc(req.body.phone)); });
   app.post('/api/admin/workers/:id/kyc', (req, res) => {
     admin(req);

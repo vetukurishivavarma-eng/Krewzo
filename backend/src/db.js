@@ -154,6 +154,11 @@ CREATE TABLE IF NOT EXISTS admins (
   id INTEGER PRIMARY KEY, phone TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
   pin_hash TEXT, setup_hash TEXT, fcm_token TEXT, created_at TEXT NOT NULL -- pin_hash NULL until first login with the setup code
 );
+CREATE TABLE IF NOT EXISTS police_checks (
+  worker_id INTEGER PRIMARY KEY REFERENCES workers(id),
+  status TEXT NOT NULL CHECK (status IN ('PENDING','VERIFIED','REJECTED')),
+  image BLOB NOT NULL, submitted_at TEXT NOT NULL, reviewed_at TEXT, valid_until TEXT, note TEXT
+);
 CREATE TABLE IF NOT EXISTS kyc_blocklist (identity_hash TEXT PRIMARY KEY, reason TEXT, created_at TEXT NOT NULL);
 `);
 
@@ -174,10 +179,14 @@ for (const sql of [
   'ALTER TABLE bookings ADD COLUMN searching_since TEXT', 'ALTER TABLE bookings ADD COLUMN cancel_reason TEXT',
   'ALTER TABLE bookings ADD COLUMN disputed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE bookings ADD COLUMN worker_rating INTEGER',
   'ALTER TABLE workers ADD COLUMN suspended_until TEXT',
+  'ALTER TABLE workers ADD COLUMN probation_waived INTEGER NOT NULL DEFAULT 0', // experienced / demo partners skip probation
   'ALTER TABLE users ADD COLUMN rating REAL NOT NULL DEFAULT 5', 'ALTER TABLE users ADD COLUMN rating_count INTEGER NOT NULL DEFAULT 0',
 ]) { try { db.exec(sql); } catch {} }
 
 export const now = () => new Date().toISOString();
+
+// Demo partners stand in for experienced workers: no probation.
+db.prepare("UPDATE workers SET probation_waived = 1 WHERE phone LIKE '900000000_' AND probation_waived = 0").run();
 
 // Old selfie links were /api/workers/<id>/photo (guessable): give every verified worker a random token instead.
 for (const w of db.prepare("SELECT id FROM workers WHERE photo_url LIKE '/api/workers/%/photo'").all()) {

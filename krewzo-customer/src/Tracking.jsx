@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, BadgeCheck, DoorOpen, KeyRound, Phone, ReceiptText, Star } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, DoorOpen, KeyRound, Phone, ReceiptText, ShieldCheck, Star } from 'lucide-react';
 import { SKILL_TIERS, TRADE_TAGS, haversineKm, rupees } from '@krewzo/shared';
 import { api, connectSocket, getServer, openDownload } from './lib.js';
 import HandshakeSheet from './HandshakeSheet.jsx';
@@ -209,6 +209,12 @@ function Ticket({ t, n, onSheet, onCancel, onRate }) {
           <div className="flex-1 min-w-0">
             <div className="font-bold flex items-center gap-1.5 truncate">{w.name} {w.kyc_verified && <BadgeCheck size={17} className="text-forest shrink-0" aria-label="KYC verified" />}</div>
             <div className="text-sm text-muted flex items-center gap-1"><Star size={13} className="fill-amber text-amber" /> {Number(w.rating).toFixed(1)} · {SKILL_TIERS[w.skill_tier].label}</div>
+            {(w.police_verified || w.new_worker) && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {w.police_verified && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-forest/15 text-forest flex items-center gap-1"><ShieldCheck size={12} /> Police verified</span>}
+                {w.new_worker && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-lime/50 text-ink">New on Krewzo</span>}
+              </div>
+            )}
             {km != null && t.status === 'ASSIGNED' && <div className="text-sm font-bold mt-0.5">{km.toFixed(1)} km · ~{etaMin(km)} min away</div>}
           </div>
           {t.status !== 'PAID_OUT' && <a href={`tel:${w.phone}`} className="w-12 h-12 rounded-full bg-ink text-lime flex items-center justify-center" aria-label="Call worker"><Phone size={19} /></a>}

@@ -3,7 +3,7 @@ import { BadgeCheck, LogOut, MapPin, Phone, RefreshCw, ShieldAlert, Siren, Trian
 import { api, clearOpsPush, setToken, setupOpsPush } from './lib.js';
 import { Wordmark } from './App.jsx';
 
-const FLAG = { SIGNATURE_NOT_CHECKED: 'UIDAI signature not checked', NO_MOBILE_IN_QR: 'Aadhaar has no mobile to match', NAME_DIFFERS: 'Name differs from sign-up', DOB_UNREADABLE: 'Date of birth unreadable' };
+const FLAG = { SIGNATURE_FAILED: 'UIDAI signature FAILED: QR may be edited', SIGNATURE_NOT_CHECKED: 'UIDAI signature not checked', NO_MOBILE_IN_QR: 'Aadhaar has no mobile to match', NAME_DIFFERS: 'Name differs from sign-up', DOB_UNREADABLE: 'Date of birth unreadable' };
 const CAT = { NOT_DONE: 'Work not done', POOR_QUALITY: 'Poor quality', SAFETY: 'Safety', ASKED_EXTRA_MONEY: 'Asked for extra money', DAMAGE: 'Damage', OTHER: 'Other',
   NOT_PAID_EXTRA_WORK: 'Extra work not paid', UNSAFE: 'Unsafe place', ABUSIVE: 'Abusive customer', WRONG_JOB: 'Job not as described' };
 const when = (iso) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -13,15 +13,15 @@ const when = (iso) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', mo
 export default function Ops({ onLogout }) {
   const [me, setMe] = useState(null);
   const [tab, setTab] = useState('kyc');
-  const [data, setData] = useState({ kyc: null, reports: null, sos: null });
+  const [data, setData] = useState({ kyc: null, reports: null, sos: null, police: null });
   const [err, setErr] = useState('');
   const seenSos = useRef(0);
 
   const load = useCallback(async () => {
     setErr('');
     try {
-      const [kyc, reports, sos] = await Promise.all([api('GET', '/admin/kyc'), api('GET', '/admin/reports'), api('GET', '/admin/sos')]);
-      setData({ kyc, reports, sos });
+      const [kyc, reports, sos, police] = await Promise.all([api('GET', '/admin/kyc'), api('GET', '/admin/reports'), api('GET', '/admin/sos'), api('GET', '/admin/police')]);
+      setData({ kyc, reports, sos, police });
       if (sos.length > seenSos.current) setTab('sos'); // jump to SOS only when a new one arrives
       seenSos.current = sos.length;
     } catch (e) { if (e.status === 401) onLogout(); else setErr(e.message); }
@@ -36,7 +36,7 @@ export default function Ops({ onLogout }) {
   }, [load, onLogout]);
 
   const logout = () => { clearOpsPush(); onLogout(); };
-  const tabs = [['sos', 'SOS', data.sos], ['reports', 'Reports', data.reports], ['kyc', 'ID checks', data.kyc]];
+  const tabs = [['sos', 'SOS', data.sos], ['reports', 'Reports', data.reports], ['kyc', 'ID checks', data.kyc], ['police', 'Police', data.police]];
   return (
     <div className="min-h-full max-w-md mx-auto pb-10">
       <header className="sticky top-0 z-20 bg-ink text-paper px-4 py-3 flex items-center gap-3">
@@ -45,9 +45,9 @@ export default function Ops({ onLogout }) {
         <button onClick={load} aria-label="Refresh" className="w-9 h-9 rounded-full bg-paper/10 flex items-center justify-center"><RefreshCw size={16} /></button>
         <button onClick={logout} aria-label="Log out" className="w-9 h-9 rounded-full bg-paper/10 flex items-center justify-center"><LogOut size={16} /></button>
       </header>
-      <div className="px-4 pt-3 grid grid-cols-3 gap-2">
+      <div className="px-4 pt-3 grid grid-cols-4 gap-2">
         {tabs.map(([id, label, list]) => (
-          <button key={id} onClick={() => setTab(id)} className={`h-12 rounded-xl text-sm font-bold relative ${tab === id ? 'bg-ink text-paper' : 'bg-card border border-line'}`}>
+          <button key={id} onClick={() => setTab(id)} className={`h-12 rounded-xl text-[13px] font-bold relative ${tab === id ? 'bg-ink text-paper' : 'bg-card border border-line'}`}>
             {label}
             {list?.length > 0 && <span className={`absolute -top-1.5 -right-1.5 min-w-6 h-6 px-1.5 rounded-full text-xs flex items-center justify-center ${id === 'sos' ? 'bg-danger text-white' : 'bg-lime text-ink'}`}>{list.length}</span>}
           </button>
@@ -58,6 +58,7 @@ export default function Ops({ onLogout }) {
         {tab === 'sos' && <List items={data.sos} empty="No open SOS alerts." render={(a) => <SosCard key={a.id} a={a} onDone={load} />} />}
         {tab === 'reports' && <List items={data.reports} empty="No open problem reports." render={(r) => <ReportCard key={r.id} r={r} onDone={load} />} />}
         {tab === 'kyc' && <List items={data.kyc} empty="No ID checks waiting." render={(k) => <KycCard key={k.worker_id} k={k} onDone={load} />} />}
+        {tab === 'police' && <List items={data.police} empty="No police certificates waiting." render={(p) => <PoliceCard key={p.worker_id} p={p} onDone={load} />} />}
       </div>
     </div>
   );
@@ -129,14 +130,37 @@ function KycCard({ k, onDone }) {
         <span className="text-muted">Area</span><span className="truncate">{k.area || '-'}</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        <span className={`text-[11px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${k.sig_ok ? 'bg-forest/15 text-forest' : 'bg-amber/20 text-[#9a5b00]'}`}>{k.sig_ok ? <BadgeCheck size={12} /> : <ShieldAlert size={12} />}{k.sig_ok ? 'UIDAI signature verified' : 'Signature not checked'}</span>
-        {k.flags.filter((f) => f !== 'SIGNATURE_NOT_CHECKED').map((f) => <span key={f} className="text-[11px] font-bold px-2 py-1 rounded-full bg-amber/20 text-[#9a5b00]">{FLAG[f] || f}</span>)}
+        <span className={`text-[11px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${k.sig_ok ? 'bg-forest/15 text-forest' : k.sig_failed ? 'bg-danger/15 text-danger' : 'bg-amber/20 text-[#9a5b00]'}`}>{k.sig_ok ? <BadgeCheck size={12} /> : <ShieldAlert size={12} />}{k.sig_ok ? 'UIDAI signature verified' : k.sig_failed ? 'UIDAI signature FAILED' : 'Signature not checked'}</span>
+        {k.flags.filter((f) => !['SIGNATURE_NOT_CHECKED', 'SIGNATURE_FAILED'].includes(f)).map((f) => <span key={f} className="text-[11px] font-bold px-2 py-1 rounded-full bg-amber/20 text-[#9a5b00]">{FLAG[f] || f}</span>)}
       </div>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (ops only)" className="h-11 rounded-xl border border-line bg-card px-3 outline-none focus:border-ink" />
       <button onClick={() => act({ verified: true })} className="h-12 rounded-xl bg-lime text-ink font-black">Approve</button>
       <div className="grid grid-cols-2 gap-2">
         <button onClick={() => act({ verified: false })} className="h-11 rounded-xl bg-danger/10 text-danger font-bold">Reject</button>
         <button onClick={() => act({ verified: false, block: true })} className="h-11 rounded-xl bg-danger/10 text-danger font-bold">Reject + block</button>
+      </div>
+      {err && <div className="text-sm text-danger font-semibold">{err}</div>}
+    </div>
+  );
+}
+
+// Police Clearance Certificate photo next to the worker's verified selfie.
+function PoliceCard({ p, onDone }) {
+  const [note, setNote] = useState('');
+  const [err, setErr] = useState('');
+  const act = async (verified) => { setErr(''); try { await api('POST', `/admin/workers/${p.worker_id}/police`, { verified, note }); onDone(); } catch (e) { setErr(e.message); } };
+  return (
+    <div className="rounded-3xl bg-card border border-line p-4 grid gap-3">
+      <div className="font-bold">{p.name} · +91 {p.phone}</div>
+      <div className="grid grid-cols-[1fr_96px] gap-3 items-start">
+        <a href={p.image} target="_blank" rel="noreferrer"><img src={p.image} alt="Police certificate" className="w-full rounded-2xl border border-line" /></a>
+        {p.selfie ? <img src={p.selfie} alt="Selfie" className="w-24 aspect-[4/5] object-cover rounded-xl border border-line" /> : <span />}
+      </div>
+      <p className="text-xs text-muted">Check: their name, issued by police, recent date, no cases listed. Approve shows "Police verified" to customers for one year.</p>
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (sent to the worker if rejected)" className="h-11 rounded-xl border border-line bg-card px-3 outline-none focus:border-ink" />
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => act(false)} className="h-11 rounded-xl bg-danger/10 text-danger font-bold">Reject</button>
+        <button onClick={() => act(true)} className="h-11 rounded-xl bg-lime text-ink font-black">Approve</button>
       </div>
       {err && <div className="text-sm text-danger font-semibold">{err}</div>}
     </div>

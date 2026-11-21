@@ -227,3 +227,17 @@ const TRUST_TEXT = {
   },
 };
 for (const l of Object.keys(TRUST_TEXT)) Object.assign(DICT[l], TRUST_TEXT[l]);
+
+// Probation + police verification.
+const P2 = {
+  EN: { new_title: 'You are new on Krewzo', new_body: 'Your first 5 jobs are General Helper jobs in daytime (7 am to 7 pm). Do them well to unlock all jobs.', jobs_done: 'jobs done',
+    police_title: 'Police verified badge', police_body: 'Customers trust police-verified workers more. Get a Police Clearance Certificate from your state police website or police station (usually free to ₹500), then upload a clear photo.',
+    police_upload: 'Upload certificate photo', police_pending: 'Certificate sent. Krewzo will check it.', police_ok: 'Police verified until', police_rejected: 'Not accepted. Upload a clear photo of a valid certificate.', police_expired: 'Your badge expired. Upload a new certificate.' },
+  TE: { new_title: 'మీరు Krewzo కి కొత్త', new_body: 'మొదటి 5 పనులు పగటిపూట (ఉదయం 7 నుండి సాయంత్రం 7) సాధారణ సహాయక పనులు. బాగా చేస్తే అన్ని పనులు వస్తాయి.', jobs_done: 'పనులు పూర్తి',
+    police_title: 'పోలీస్ వెరిఫైడ్ బ్యాడ్జ్', police_body: 'పోలీస్ వెరిఫైడ్ వర్కర్లను కస్టమర్లు ఎక్కువ నమ్ముతారు. మీ రాష్ట్ర పోలీస్ వెబ్‌సైట్ లేదా పోలీస్ స్టేషన్ నుండి Police Clearance Certificate తీసుకోండి (ఉచితం నుండి ₹500 వరకు), తర్వాత స్పష్టమైన ఫోటో అప్‌లోడ్ చేయండి.',
+    police_upload: 'సర్టిఫికేట్ ఫోటో అప్‌లోడ్', police_pending: 'సర్టిఫికేట్ పంపాం. Krewzo చెక్ చేస్తుంది.', police_ok: 'పోలీస్ వెరిఫైడ్, తేదీ వరకు:', police_rejected: 'అంగీకరించలేదు. స్పష్టమైన సర్టిఫికేట్ ఫోటో పంపండి.', police_expired: 'బ్యాడ్జ్ గడువు ముగిసింది. కొత్త సర్టిఫికేట్ పంపండి.' },
+  HI: { new_title: 'आप Krewzo पर नए हैं', new_body: 'आपके पहले 5 काम दिन में (सुबह 7 से शाम 7) सामान्य हेल्पर के काम होंगे। अच्छा करने पर सारे काम खुलेंगे।', jobs_done: 'काम पूरे',
+    police_title: 'पुलिस वेरिफाइड बैज', police_body: 'ग्राहक पुलिस वेरिफाइड कामगारों पर ज़्यादा भरोसा करते हैं। अपने राज्य की पुलिस वेबसाइट या थाने से Police Clearance Certificate लें (आमतौर पर मुफ़्त से ₹500), फिर साफ़ फ़ोटो अपलोड करें।',
+    police_upload: 'सर्टिफ़िकेट फ़ोटो अपलोड करें', police_pending: 'सर्टिफ़िकेट भेज दिया। Krewzo जाँच करेगा।', police_ok: 'पुलिस वेरिफाइड, तारीख तक:', police_rejected: 'मंज़ूर नहीं हुआ। वैध सर्टिफ़िकेट की साफ़ फ़ोटो भेजें।', police_expired: 'बैज की अवधि खत्म। नया सर्टिफ़िकेट भेजें।' },
+};
+for (const l of Object.keys(P2)) Object.assign(DICT[l], P2[l]);

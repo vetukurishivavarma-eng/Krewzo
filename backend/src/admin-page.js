@@ -46,6 +46,8 @@ dt { color:var(--muted); } dd { margin:0; font-weight:600; min-width:0; overflow
   <div class="bar"><div class="tabs" id="tabs"><button data-s="PENDING" class="on">To review</button><button data-s="VERIFIED">Approved</button><button data-s="REJECTED">Rejected</button></div>
     <span id="count" style="color:var(--muted)"></span></div>
   <div id="list"></div>
+  <h2 class="section-h">Police certificates</h2>
+  <div id="police"></div>
   <h2 class="section-h">Ops team (app logins)</h2>
   <p style="color:var(--muted);margin:0">They log in from the Krewzo customer app: <b>Log in</b> screen, then <b>Krewzo team login</b>. Each person gets a one-time setup code, then chooses a 6-digit PIN. They get notified of new ID checks, problem reports and SOS.</p>
   <div id="team"></div>
@@ -58,7 +60,7 @@ dt { color:var(--muted); } dd { margin:0; font-weight:600; min-width:0; overflow
 </div>
 <script>
 let key = sessionStorage.getItem('krewzo.admin') || '', tab = 'PENDING';
-const FLAG = { SIGNATURE_NOT_CHECKED: 'UIDAI signature NOT checked (no certificate on server)', NO_MOBILE_IN_QR: 'Aadhaar has no mobile to match', NAME_DIFFERS: 'Name differs from sign-up name', DOB_UNREADABLE: 'Date of birth unreadable' };
+const FLAG = { SIGNATURE_FAILED: 'UIDAI signature FAILED: QR may be edited', SIGNATURE_NOT_CHECKED: 'UIDAI signature NOT checked (no certificate on server)', NO_MOBILE_IN_QR: 'Aadhaar has no mobile to match', NAME_DIFFERS: 'Name differs from sign-up name', DOB_UNREADABLE: 'Date of birth unreadable' };
 const el = (t, props = {}, kids = []) => { const e = document.createElement(t); Object.assign(e, props); kids.forEach((k) => e.append(k)); return e; };
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', 'x-admin-key': key } });
@@ -106,6 +108,27 @@ async function loadSafety() {
   } catch (e) { reps.append(el('div', { className: 'err', textContent: e.message })); }
 }
 
+async function loadPolice() {
+  const box = document.getElementById('police');
+  box.replaceChildren();
+  if (!key) return;
+  try {
+    const rows = await api('/api/admin/police');
+    if (!rows.length) box.append(el('div', { className: 'empty', textContent: 'No police certificates waiting.' }));
+    rows.forEach((p) => {
+      const note = el('input', { type: 'text', placeholder: 'Note (sent to the worker if rejected)' });
+      const act = (verified) => async () => { try { await api('/api/admin/workers/' + p.worker_id + '/police', { method: 'POST', body: JSON.stringify({ verified, note: note.value }) }); loadPolice(); } catch (e) { alert(e.message); } };
+      box.append(el('div', { className: 'card' }, [
+        el('div', { className: 'photos' }, [photo(p.image, 'Certificate'), photo(p.selfie, 'Selfie')]),
+        el('div', {}, [el('b', { textContent: p.name + ' · +91 ' + p.phone }),
+          el('div', { className: 'actions' }, [note,
+            el('button', { className: 'btn ok', textContent: 'Approve (badge for 1 year)', onclick: act(true) }),
+            el('button', { className: 'btn no', textContent: 'Reject', onclick: act(false) })])]),
+      ]));
+    });
+  } catch (e) { box.append(el('div', { className: 'err', textContent: e.message })); }
+}
+
 async function loadTeam() {
   const box = document.getElementById('team');
   box.replaceChildren();
@@ -148,8 +171,8 @@ function card(k) {
   [['Sign-up name', k.worker_name], ['Aadhaar name', k.name], ['Phone', k.phone], ['Aadhaar', 'XXXX XXXX ' + k.aadhaar_last4], ['DOB / gender', (k.dob || '?') + ' / ' + (k.gender || '?')], ['Area', k.area || '-'], ['Skills', k.skill_tier + ' · ' + k.trade_tags.join(', ')], ['Submitted', new Date(k.submitted_at).toLocaleString('en-IN')], ...(k.note ? [['Note', k.note]] : [])]
     .forEach(([a, b]) => dl.append(el('dt', { textContent: a }), el('dd', { textContent: b })));
   const chips = el('div', { className: 'chips' }, [
-    el('span', { className: 'chip' + (k.sig_ok ? ' good' : ''), textContent: k.sig_ok ? 'UIDAI signature verified' : 'Signature not checked' }),
-    ...k.flags.filter((f) => f !== 'SIGNATURE_NOT_CHECKED').map((f) => el('span', { className: 'chip', textContent: FLAG[f] || f })),
+    el('span', { className: 'chip' + (k.sig_ok ? ' good' : ''), style: k.sig_failed ? 'background:#f3dedd;color:var(--red)' : '', textContent: k.sig_ok ? 'UIDAI signature verified' : k.sig_failed ? 'UIDAI signature FAILED' : 'Signature not checked' }),
+    ...k.flags.filter((f) => f !== 'SIGNATURE_NOT_CHECKED' && f !== 'SIGNATURE_FAILED').map((f) => el('span', { className: 'chip', textContent: FLAG[f] || f })),
   ]);
   const body = el('div', {}, [dl, chips]);
   if (k.status === 'PENDING') {
@@ -162,7 +185,7 @@ function card(k) {
   }
   return el('div', { className: 'card' }, [el('div', { className: 'photos' }, [photo(k.selfie, 'Selfie'), photo(k.aadhaar_photo, 'Aadhaar photo')]), body]);
 }
-document.getElementById('keyf').onsubmit = (e) => { e.preventDefault(); key = document.getElementById('key').value.trim(); sessionStorage.setItem('krewzo.admin', key); load(); loadSafety(); loadTeam(); };
+document.getElementById('keyf').onsubmit = (e) => { e.preventDefault(); key = document.getElementById('key').value.trim(); sessionStorage.setItem('krewzo.admin', key); load(); loadSafety(); loadTeam(); loadPolice(); };
 setInterval(loadSafety, 30000); // SOS / reports refresh by themselves
 document.getElementById('resetf').onsubmit = async (e) => {
   e.preventDefault();
@@ -174,4 +197,5 @@ document.getElementById('tabs').onclick = (e) => { const s = e.target.dataset.s;
 load();
 loadSafety();
 loadTeam();
+loadPolice();
 </script></body></html>`;

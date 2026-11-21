@@ -9,6 +9,7 @@ import { sendPush } from './push.js';
 import { signToken } from './auth.js';
 import { businessFor, checkMonthly } from './business.js';
 import { checkBookingLimits, isSuspended } from './safety.js';
+import { policeVerified, policeStatus as policeStatusFor } from './kyc.js';
 
 export class ApiError extends Error {
   constructor(status, message, extra = {}) { super(message); this.status = status; this.extra = extra; }
@@ -55,7 +56,8 @@ export function viewFor(b, role) {
   const w = b.worker_id ? getWorker(b.worker_id) : null;
   out.worker = w && { id: w.id, name: w.name, phone: w.phone, photo_url: w.photo_token ? `/api/photos/${w.photo_token}` : null, rating: w.rating, kyc_verified: w.kyc_verified, skill_tier: w.skill_tier, lat: w.lat, lng: w.lng,
     // UPI only after the job is paid out (for tips): wages must go through escrow, never direct.
-    ...(b.status === S.PAID_OUT && { upi_id: w.upi_id }) };
+    ...(b.status === S.PAID_OUT && { upi_id: w.upi_id }),
+    police_verified: policeVerified(w.id), new_worker: probation(w.id).on };
   if (role === 'worker') {
     delete out.start_handshake; delete out.end_handshake;
     const c = getUser(b.customer_id);
@@ -180,8 +182,24 @@ function clashes(workerId, b) {
     });
 }
 
+// Probation: a new partner's first PROBATION_JOBS paid jobs are General Helper jobs in daytime only; it ends
+// once they have done that many with an average rating of at least 4 (or no ratings yet).
+export const PROBATION_JOBS = 5;
+export function probation(workerId) {
+  if (getWorker(workerId)?.probation_waived) return { on: false, done: PROBATION_JOBS, needed: PROBATION_JOBS, avg: null, waived: true };
+  const r = db.prepare("SELECT COUNT(*) AS n, AVG(customer_rating) AS avg FROM bookings WHERE worker_id = ? AND status = 'PAID_OUT'").get(workerId);
+  const done = r.n, avg = r.avg;
+  return { on: done < PROBATION_JOBS || (avg != null && avg < 4), done: Math.min(done, PROBATION_JOBS), needed: PROBATION_JOBS, avg: avg == null ? null : Math.round(avg * 10) / 10 };
+}
+// 7 am to 7 pm IST, for an instant job now or a scheduled job's slot.
+export function isDaytime(iso) {
+  const h = new Date(Date.parse(iso) + 5.5 * 3600e3).getUTCHours();
+  return h >= 7 && h < 19;
+}
+
 function eligible(w, b) {
   if (!w.is_online || !w.kyc_verified || w.lat == null || isSuspended(w)) return null;
+  if ((b.skill_tier !== 'TIER_1' || !isDaytime(b.scheduled_at || now())) && probation(w.id).on) return null;
   if (SKILL_TIERS[w.skill_tier].rank < SKILL_TIERS[b.skill_tier].rank) return null;
   if (b.skill_tier !== 'TIER_1' && !w.trade_tags.includes(b.trade_tag)) return null;
   const d = haversineKm(w, b);
@@ -532,7 +550,7 @@ export function workerHome(workerId) {
     COUNT(CASE WHEN status = 'PAID_OUT' THEN 1 END) AS n FROM bookings
     WHERE worker_id = ? AND ((status = 'PAID_OUT' AND paid_out_at >= ?) OR (status = 'CANCELLED' AND cancel_fee > 0 AND cancelled_at >= ?))`).get(w.id, day, day);
   const act = activeJob(w.id);
-  return { token: signToken('worker', w.id), worker: publicWorker(w), today_earnings: today.s, today_shifts: today.n, active: act ? viewFor(act, 'worker') : null, upcoming: upcomingJobs(w.id), offers: act ? [] : openOffers(w.id) };
+  return { token: signToken('worker', w.id), probation: probation(w.id), police: policeStatusFor(w.id), worker: publicWorker(w), today_earnings: today.s, today_shifts: today.n, active: act ? viewFor(act, 'worker') : null, upcoming: upcomingJobs(w.id), offers: act ? [] : openOffers(w.id) };
 }
 
 export function passbook(workerId) {
