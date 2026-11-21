@@ -12,6 +12,7 @@
   "dependencies": {
     "@krewzo/shared": "*",
     "express": "^5.1.0",
+    "pg": "^8.13.1",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
