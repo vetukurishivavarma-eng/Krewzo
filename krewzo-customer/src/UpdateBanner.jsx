@@ -6,12 +6,13 @@ export default function UpdateBanner() {
   const [u, setU] = useState(null);
   const [pct, setPct] = useState(null);
   const [err, setErr] = useState('');
+  const [ready, setReady] = useState(false); // downloaded once: the next tap opens the installer straight away
   useEffect(() => { checkForUpdate('customer', __APP_VERSION__).then(setU); }, []);
   if (!u) return null;
 
   const go = async () => {
     setErr(''); setPct(0);
-    try { await installUpdate(u.url, setPct); setPct(null); } catch (e) { setErr(e.message); setPct(null); }
+    try { await installUpdate(u.url, setPct); setPct(null); setReady(true); } catch (e) { setErr(e.message); setPct(null); }
   };
   return (
     <div className="drop fixed inset-x-3 top-3 z-[60] max-w-md mx-auto rounded-2xl bg-ink text-paper p-3 pl-4 shadow-2xl flex items-center gap-3">
@@ -20,7 +21,7 @@ export default function UpdateBanner() {
         {err && <div className="text-sm text-danger font-normal">{err}</div>}
       </div>
       <button disabled={pct !== null} onClick={go} className="h-12 px-5 rounded-xl bg-lime text-ink text-base font-black disabled:opacity-70">
-        {pct === null ? 'Update' : pct + '%'}
+        {pct === null ? (ready ? 'Install' : 'Update') : pct + '%'}
       </button>
     </div>
   );

@@ -26,17 +26,27 @@ public class UpdaterPlugin extends Plugin {
         if (!url.startsWith(ALLOWED)) { call.reject("Update URL not allowed"); return; }
         new Thread(() -> {
             try {
-                File out = new File(getContext().getCacheDir(), "update.apk");
-                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); // follows GitHub's https redirect
-                if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
-                long total = c.getContentLengthLong(), done = 0; int last = -1;
-                try (InputStream in = c.getInputStream(); OutputStream os = new FileOutputStream(out)) {
-                    byte[] buf = new byte[65536];
-                    for (int n; (n = in.read(buf)) > 0; ) {
-                        os.write(buf, 0, n); done += n;
-                        int pct = total > 0 ? (int) (done * 100 / total) : 0;
-                        if (pct != last) { last = pct; JSObject e = new JSObject(); e.put("pct", pct); notifyListeners("progress", e); }
+                // One file per release URL. Downloaded to .part and renamed only when complete, so if the worker
+                // backs out of the installer, the next tap opens it again instantly instead of re-downloading.
+                File dir = getContext().getCacheDir();
+                File out = new File(dir, "update-" + Integer.toHexString(url.hashCode()) + ".apk");
+                if (!out.exists()) {
+                    File[] old = dir.listFiles((d, n) -> n.startsWith("update"));
+                    if (old != null) for (File f : old) f.delete(); // earlier releases / half downloads
+                    File part = new File(dir, out.getName() + ".part");
+                    HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); // follows GitHub's https redirect
+                    if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
+                    long total = c.getContentLengthLong(), done = 0; int last = -1;
+                    try (InputStream in = c.getInputStream(); OutputStream os = new FileOutputStream(part)) {
+                        byte[] buf = new byte[65536];
+                        for (int n; (n = in.read(buf)) > 0; ) {
+                            os.write(buf, 0, n); done += n;
+                            int pct = total > 0 ? (int) (done * 100 / total) : 0;
+                            if (pct != last) { last = pct; JSObject e = new JSObject(); e.put("pct", pct); notifyListeners("progress", e); }
+                        }
                     }
+                    if (total > 0 && done != total) throw new Exception("incomplete download");
+                    if (!part.renameTo(out)) throw new Exception("could not save update");
                 }
                 Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", out);
                 Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
