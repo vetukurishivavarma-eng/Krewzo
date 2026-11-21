@@ -38,4 +38,10 @@ await gh(`https://uploads.github.com/repos/${REPO}/releases/${rel.id}/assets?nam
   method: 'POST', headers: { 'content-type': 'application/vnd.android.package-archive' }, body: fs.readFileSync(apkPath),
 });
 fs.copyFileSync(apkPath, path.join(os.homedir(), 'Downloads', name));
+
+// Tell every installed phone (push, kept 7 days for phones that are off). The free server may need ~50 s to wake.
+try {
+  const r = await fetch(`${process.env.VITE_API_URL}/api/releases/check`, { method: 'POST', signal: AbortSignal.timeout(90e3) });
+  console.log('Update push:', (await r.json()).sent, 'phones');
+} catch (e) { console.log('Update push skipped:', e.message, '(the server re-checks every 15 min while awake)'); }
 console.log(`Released ${tag}: ${rel.html_url}\nCopy: Downloads\\${name}`);

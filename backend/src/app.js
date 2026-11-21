@@ -8,6 +8,7 @@ import { checkPin, hashPin, normPhone, readToken, signToken, validPhone, validPi
 import * as svc from './service.js';
 import { extractMessages, handleMessage, notifyWhatsApp, sendWhatsApp } from './whatsapp.js';
 import { seedIfEmpty } from './seed.js';
+import { announceNewReleases } from './releases.js';
 
 // Wrong-PIN lockout: 5 misses locks that phone+role for 15 min (a 4-digit PIN is only 10,000 guesses).
 // ponytail: in-memory, so it resets on restart and isn't shared across instances; move to the DB if we scale out.
@@ -120,6 +121,10 @@ export function createApp() {
     if (!self && !(key && safeEqual(req.headers['x-api-key'] || '', key))) throw new svc.ApiError(401, 'NBFC API key required');
     res.json(svc.creditPassbook(id));
   });
+
+  // The release script calls this after publishing: push "new version ready" to every phone. Public on purpose:
+  // it only re-reads GitHub releases (throttled), so calling it can't do anything but announce a real release.
+  app.post('/api/releases/check', async (req, res) => res.json({ sent: await announceNewReleases() }));
 
   // Ops: mark a newly registered worker's KYC as verified.
   app.post('/api/admin/workers/:id/kyc', (req, res) => {

@@ -32,6 +32,7 @@ export async function setupPush(onOpen) {
   if (!isNative) return;
   try {
     await PushNotifications.createChannel({ id: 'updates', name: 'Booking updates', importance: 4, visibility: 1, vibration: true });
+    await PushNotifications.createChannel({ id: 'app_updates', name: 'App updates', importance: 3, visibility: 1 });
     let p = await PushNotifications.checkPermissions();
     if (p.receive.startsWith('prompt')) p = await PushNotifications.requestPermissions();
     if (p.receive !== 'granted') return;

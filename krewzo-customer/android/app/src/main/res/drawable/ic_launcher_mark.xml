@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Krewzo mark: the wordmark's "k"; the lower leg is the brand dot (see branding/). -->
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.18" android:scaleY="1.18">
+        <path android:strokeColor="#15130f" android:strokeWidth="10.5" android:strokeLineCap="round" android:pathData="M41,35V73"/>
+        <path android:strokeColor="#15130f" android:strokeWidth="10.5" android:strokeLineCap="round" android:pathData="M44.5,60L67,37.5"/>
+        <path android:fillColor="#15130f" android:pathData="M58.5,69a7.5,7.5 0,1 0,15 0a7.5,7.5 0,1 0,-15 0z"/>
+    </group>
+</vector>
