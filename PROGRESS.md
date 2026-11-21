@@ -1,6 +1,27 @@
 # Krewzo progress
 
-## RESUME HERE (2026-11-21)
+## RESUME HERE (saved 2026-11-21 evening — "good stage", paused by the user)
+
+**Where things stand**
+- Live: backend https://krewzo-api.onrender.com (Render free, Singapore; data durable via SQLite -> Neon snapshots). Apps: partner 2.0.12, customer 2.0.12 (in-app auto-update from GitHub releases; "update ready" push). Ops: https://krewzo-api.onrender.com/admin (ADMIN_KEY from Render) + "Krewzo team login" in the customer app. Client download page: https://vetukurishivavarma-eng.github.io/Krewzo/ (gh-pages; still lists partner 2.0.6 / customer 2.0.5 — the apps update themselves).
+- Backend tests: `npm test` = 42 green (loop, offer expiry, KYC, business, safety, ops).
+- Release flow: bump `version` in krewzo-<app>/package.json, `node scripts/release.mjs partner|customer "notes"`. After a backend push, confirm a NEW route answers (Render free once kept serving the old instance; a manual redeploy fixed it).
+- Payments, escrow, payouts, subscription autopay are SIMULATED.
+
+**Waiting on the user**
+1. Rotate the Neon password (the connection string was pasted in chat), then update `DATABASE_URL` on Render.
+2. Decide when to switch off the demo accounts (PIN 1234; verified demo workers can accept real jobs in prod). Doing so breaks the demo login on the download page.
+3. Worker phone had no push token: open partner app -> Profile -> "Job alerts are on" (tap Fix).
+4. UIDAI Secure QR production certificate -> `backend/certs/` (until then every ID check goes to manual review).
+5. Add ops team members on /admin (setup code -> 6-digit PIN in the app).
+
+**Next candidates (need outside services / money)**
+- Real payments: Razorpay or Cashfree (collect into escrow, Route payouts, subscriptions/autopay).
+- Customer OTP sign-up (fully stops number discovery and impersonation), GSTIN verification, monthly-credit limits for Business, call masking (Exotel/Knowlarity).
+- Play Store internal testing ($25), a real insurer for the Rs 19 shift insurance, real helpline number, Terms/Privacy, lawyer check of Aadhaar offline-verification compliance.
+- Proper Postgres instead of whole-file snapshots before real scale.
+
+## History (oldest first)
 
 **Done**
 - Monorepo: shared / backend / krewzo-partner / krewzo-customer. All four modules complete.
