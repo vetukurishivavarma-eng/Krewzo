@@ -14,9 +14,13 @@ export async function announceNewReleases() {
   lastCheck = Date.now();
   let sent = 0;
   try {
-    const list = await (await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=10`)).json();
+    // The public Atom feed, not api.github.com: Render's shared IPs hit the API's anonymous rate limit.
+    const xml = await (await fetch(`https://github.com/${REPO}/releases.atom`)).text();
+    const list = [...xml.matchAll(/<entry>[\s\S]*?<\/entry>/g)].map(([e]) => ({
+      tag_name: e.match(/releases\/tag\/([^"<]+)/)?.[1] || '', published_at: e.match(/<updated>([^<]+)<\/updated>/)?.[1],
+    })).sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
     for (const [app, { table, name }] of Object.entries(APPS)) {
-      const rel = list.find((r) => !r.draft && r.tag_name.startsWith(app + '-v'));
+      const rel = list.find((r) => r.tag_name.startsWith(app + '-v'));
       if (!rel || Date.now() - Date.parse(rel.published_at) > FRESH_MS) continue;
       const key = 'announced:' + rel.tag_name;
       if (db.prepare('SELECT 1 FROM settings WHERE key = ?').get(key)) continue;
