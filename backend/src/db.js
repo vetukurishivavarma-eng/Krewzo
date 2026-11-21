@@ -112,6 +112,23 @@ CREATE TABLE IF NOT EXISTS job_offers (
 );
 `);
 
+// Worker ID check (Aadhaar Secure QR + selfie). We keep only the last 4 Aadhaar digits, never the full number.
+db.exec(`
+CREATE TABLE IF NOT EXISTS kyc_submissions (
+  worker_id INTEGER PRIMARY KEY REFERENCES workers(id),
+  status TEXT NOT NULL CHECK (status IN ('PENDING','VERIFIED','REJECTED')),
+  identity_hash TEXT NOT NULL,
+  aadhaar_last4 TEXT NOT NULL,
+  name TEXT NOT NULL, dob TEXT, gender TEXT, area TEXT, qr_version TEXT,
+  sig_ok INTEGER NOT NULL,              -- 1 = UIDAI signature verified, -1 = no UIDAI certificate installed yet
+  photo BLOB, selfie BLOB NOT NULL,
+  flags TEXT NOT NULL DEFAULT '[]',
+  submitted_at TEXT NOT NULL, reviewed_at TEXT, note TEXT
+);
+CREATE INDEX IF NOT EXISTS kyc_identity ON kyc_submissions(identity_hash);
+CREATE TABLE IF NOT EXISTS kyc_blocklist (identity_hash TEXT PRIMARY KEY, reason TEXT, created_at TEXT NOT NULL);
+`);
+
 // Columns added after launch (SQLite has no ADD COLUMN IF NOT EXISTS).
 for (const sql of [
   'ALTER TABLE workers ADD COLUMN fcm_token TEXT', 'ALTER TABLE users ADD COLUMN fcm_token TEXT',

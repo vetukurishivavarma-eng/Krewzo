@@ -160,7 +160,7 @@ function Ticket({ t, n, onSheet, onCancel, onRate }) {
 
       {w && ['ASSIGNED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'PAID_OUT'].includes(t.status) && (
         <div className="flex items-center gap-3">
-          {w.photo_url ? <img src={w.photo_url} alt="" className="w-14 h-14 rounded-2xl object-cover" /> :
+          {w.photo_url ? <img src={w.photo_url.startsWith('/') ? getServer() + w.photo_url : w.photo_url} alt={w.name} className="w-14 h-14 rounded-2xl object-cover" /> :
             <div className="w-14 h-14 rounded-2xl bg-lime text-ink text-2xl font-display font-extrabold flex items-center justify-center">{w.name[0]}</div>}
           <div className="flex-1 min-w-0">
             <div className="font-bold flex items-center gap-1.5 truncate">{w.name} {w.kyc_verified && <BadgeCheck size={17} className="text-forest shrink-0" aria-label="KYC verified" />}</div>

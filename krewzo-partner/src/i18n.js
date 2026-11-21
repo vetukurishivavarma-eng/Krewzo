@@ -121,3 +121,62 @@ const MORE = {
   },
 };
 for (const l of Object.keys(MORE)) Object.assign(DICT[l], MORE[l]);
+
+// Aadhaar ID check (Kyc.jsx). Error keys match the server's `code`.
+const KYC = {
+  EN: {
+    kyc_title: 'Verify your Aadhaar', kyc_sub: 'Needed once before you get jobs. Takes about a minute.', kyc_start: 'Start',
+    kyc_what: 'We read your name, date of birth, gender, area and photo from the Aadhaar QR. Only the last 4 digits of your Aadhaar number are kept.',
+    kyc_phone_note: 'Your phone number must be the one linked to your Aadhaar.',
+    kyc_consent: 'I agree to share my Aadhaar details with Krewzo for verification.',
+    kyc_scan: 'Scan the big QR on your Aadhaar', kyc_scan_hint: 'Card, letter, e-Aadhaar PDF or mAadhaar app. Hold steady in good light.',
+    kyc_pick: 'Choose a photo or screenshot of the QR', kyc_no_qr: 'No Aadhaar QR found in that photo. Try a clearer one.', kyc_qr_ok: 'Aadhaar QR scanned',
+    kyc_selfie: 'Take a selfie', kyc_selfie_hint: 'Face the camera, no cap or mask. Customers will see this photo.', kyc_retake: 'Retake',
+    kyc_submit: 'Submit for verification', kyc_pending_t: 'ID check under review', kyc_pending_b: 'We will approve you soon and send a notification.',
+    kyc_rejected: 'ID check not approved. Try again or call Krewzo help.', kyc_done: 'Verified! You can go on duty now.',
+    KYC_ERR: {
+      BAD_SIGNATURE: 'This QR failed the UIDAI security check. Use the QR on your Aadhaar or a fresh e-Aadhaar.',
+      MOBILE_MISMATCH: 'This Aadhaar is linked to a different mobile number. Sign up with the number linked to your Aadhaar.',
+      UNDER_18: 'You must be 18 or older.', DUPLICATE: 'This Aadhaar is already used on another Krewzo account. Call help.',
+      BLOCKED: 'This Aadhaar cannot be used on Krewzo. Call help.', OLD_QR: 'Old Aadhaar QR. Download a new e-Aadhaar or use the mAadhaar app.',
+      NOT_AADHAAR: 'This is not an Aadhaar QR. Scan the big QR on your Aadhaar.',
+    },
+  },
+  TE: {
+    kyc_title: 'మీ ఆధార్ ధృవీకరించండి', kyc_sub: 'పనులు రావడానికి ఒక్కసారి చేయాలి. సుమారు 1 నిమిషం.', kyc_start: 'మొదలుపెట్టండి',
+    kyc_what: 'ఆధార్ QR నుండి మీ పేరు, పుట్టిన తేదీ, లింగం, ప్రాంతం, ఫోటో తీసుకుంటాం. ఆధార్ నంబర్‌లో చివరి 4 అంకెలు మాత్రమే ఉంచుతాం.',
+    kyc_phone_note: 'మీ ఫోన్ నంబర్ ఆధార్‌కు లింక్ అయిన నంబర్ అయి ఉండాలి.',
+    kyc_consent: 'ధృవీకరణ కోసం నా ఆధార్ వివరాలు Krewzo తో పంచుకోవడానికి అంగీకరిస్తున్నాను.',
+    kyc_scan: 'ఆధార్ పై ఉన్న పెద్ద QR స్కాన్ చేయండి', kyc_scan_hint: 'కార్డ్, లెటర్, e-ఆధార్ లేదా mAadhaar యాప్. వెలుతురులో కదలకుండా పట్టుకోండి.',
+    kyc_pick: 'QR ఫోటో లేదా స్క్రీన్‌షాట్ ఎంచుకోండి', kyc_no_qr: 'ఆ ఫోటోలో ఆధార్ QR కనిపించలేదు. స్పష్టమైనది ప్రయత్నించండి.', kyc_qr_ok: 'ఆధార్ QR స్కాన్ అయింది',
+    kyc_selfie: 'సెల్ఫీ తీసుకోండి', kyc_selfie_hint: 'కెమెరా వైపు చూడండి, టోపీ లేదా మాస్క్ వద్దు. కస్టమర్లు ఈ ఫోటో చూస్తారు.', kyc_retake: 'మళ్ళీ తీయండి',
+    kyc_submit: 'ధృవీకరణకు పంపండి', kyc_pending_t: 'ID చెక్ జరుగుతోంది', kyc_pending_b: 'త్వరలో ఆమోదించి మీకు నోటిఫికేషన్ పంపుతాం.',
+    kyc_rejected: 'ID చెక్ ఆమోదం కాలేదు. మళ్ళీ ప్రయత్నించండి లేదా సహాయానికి కాల్ చేయండి.', kyc_done: 'ధృవీకరణ పూర్తి! ఇప్పుడు డ్యూటీ ఆన్ చేయవచ్చు.',
+    KYC_ERR: {
+      BAD_SIGNATURE: 'ఈ QR UIDAI భద్రతా చెక్‌లో విఫలమైంది. మీ ఆధార్‌పై ఉన్న QR లేదా కొత్త e-ఆధార్ వాడండి.',
+      MOBILE_MISMATCH: 'ఈ ఆధార్ వేరే మొబైల్ నంబర్‌కు లింక్ అయింది. ఆధార్‌కు లింక్ అయిన నంబర్‌తో చేరండి.',
+      UNDER_18: '18 సంవత్సరాలు నిండి ఉండాలి.', DUPLICATE: 'ఈ ఆధార్ ఇప్పటికే వేరే Krewzo ఖాతాలో ఉంది. సహాయానికి కాల్ చేయండి.',
+      BLOCKED: 'ఈ ఆధార్ Krewzo లో వాడలేరు. సహాయానికి కాల్ చేయండి.', OLD_QR: 'పాత ఆధార్ QR. కొత్త e-ఆధార్ డౌన్‌లోడ్ చేయండి లేదా mAadhaar యాప్ వాడండి.',
+      NOT_AADHAAR: 'ఇది ఆధార్ QR కాదు. ఆధార్‌పై పెద్ద QR స్కాన్ చేయండి.',
+    },
+  },
+  HI: {
+    kyc_title: 'अपना आधार सत्यापित करें', kyc_sub: 'काम पाने से पहले एक बार। लगभग 1 मिनट लगेगा।', kyc_start: 'शुरू करें',
+    kyc_what: 'आधार QR से आपका नाम, जन्म तिथि, लिंग, इलाका और फ़ोटो लेते हैं। आधार नंबर के सिर्फ़ आखिरी 4 अंक रखे जाते हैं।',
+    kyc_phone_note: 'आपका फ़ोन नंबर वही होना चाहिए जो आधार से जुड़ा है।',
+    kyc_consent: 'मैं सत्यापन के लिए अपने आधार की जानकारी Krewzo को देने के लिए सहमत हूँ।',
+    kyc_scan: 'आधार पर बड़ा QR स्कैन करें', kyc_scan_hint: 'कार्ड, पत्र, ई-आधार PDF या mAadhaar ऐप। अच्छी रोशनी में स्थिर रखें।',
+    kyc_pick: 'QR की फ़ोटो या स्क्रीनशॉट चुनें', kyc_no_qr: 'उस फ़ोटो में आधार QR नहीं मिला। साफ़ फ़ोटो आज़माएँ।', kyc_qr_ok: 'आधार QR स्कैन हो गया',
+    kyc_selfie: 'सेल्फ़ी लें', kyc_selfie_hint: 'कैमरे की ओर देखें, टोपी या मास्क नहीं। ग्राहक यह फ़ोटो देखेंगे।', kyc_retake: 'फिर से लें',
+    kyc_submit: 'सत्यापन के लिए भेजें', kyc_pending_t: 'ID जाँच हो रही है', kyc_pending_b: 'जल्द ही मंज़ूरी देकर सूचना भेजेंगे।',
+    kyc_rejected: 'ID जाँच मंज़ूर नहीं हुई। फिर से कोशिश करें या Krewzo मदद को कॉल करें।', kyc_done: 'सत्यापित! अब ड्यूटी चालू कर सकते हैं।',
+    KYC_ERR: {
+      BAD_SIGNATURE: 'यह QR UIDAI सुरक्षा जाँच में फ़ेल हुआ। आधार पर छपा QR या नया ई-आधार इस्तेमाल करें।',
+      MOBILE_MISMATCH: 'यह आधार किसी दूसरे मोबाइल नंबर से जुड़ा है। आधार से जुड़े नंबर से जुड़ें।',
+      UNDER_18: 'उम्र 18 साल या ज़्यादा होनी चाहिए।', DUPLICATE: 'यह आधार पहले से किसी दूसरे Krewzo खाते में है। मदद को कॉल करें।',
+      BLOCKED: 'यह आधार Krewzo पर इस्तेमाल नहीं हो सकता। मदद को कॉल करें।', OLD_QR: 'पुराना आधार QR। नया ई-आधार डाउनलोड करें या mAadhaar ऐप इस्तेमाल करें।',
+      NOT_AADHAAR: 'यह आधार QR नहीं है। आधार पर बड़ा QR स्कैन करें।',
+    },
+  },
+};
+for (const l of Object.keys(KYC)) Object.assign(DICT[l], KYC[l]);

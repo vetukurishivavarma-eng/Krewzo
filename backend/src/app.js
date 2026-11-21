@@ -9,6 +9,8 @@ import * as svc from './service.js';
 import { extractMessages, handleMessage, notifyWhatsApp, sendWhatsApp } from './whatsapp.js';
 import { seedIfEmpty } from './seed.js';
 import { announceNewReleases } from './releases.js';
+import * as kyc from './kyc.js';
+import { ADMIN_PAGE } from './admin-page.js';
 
 // Wrong-PIN lockout: 5 misses locks that phone+role for 15 min (a 4-digit PIN is only 10,000 guesses).
 // ponytail: in-memory, so it resets on restart and isn't shared across instances; move to the DB if we scale out.
@@ -39,7 +41,9 @@ export function createApp() {
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
   });
-  app.use(express.json({ limit: '100kb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
+  const json = (limit) => express.json({ limit, verify: (req, _res, buf) => { req.rawBody = buf; } });
+  const small = json('100kb'), large = json('1mb'); // only the ID check carries a selfie photo
+  app.use((req, res, next) => (req.path === '/api/workers/me/kyc' ? large : small)(req, res, next));
 
   const auth = (role) => (req, _res, next) => {
     const t = readToken((req.headers.authorization || '').replace(/^Bearer /, '') || req.query.token);
@@ -81,8 +85,8 @@ export function createApp() {
       const tags = trade_tags.filter((t) => TRADE_TAGS[t]);
       if (!tags.length) throw new svc.ApiError(400, 'Pick at least one work type');
       const r = db.prepare('INSERT INTO workers (phone, name, pin_hash, kyc_verified, skill_tier, trade_tags, upi_id, language, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-        // AUTO_KYC=1 is for testing only: new partners skip the ops ID check. Remove it before launch.
-        .run(phone, String(name).trim(), hashPin(pin), process.env.AUTO_KYC === '1' ? 1 : 0, skill_tier, JSON.stringify(tags), upi_id || `${phone}@upi`, ['EN', 'TE', 'HI'].includes(language) ? language : 'EN', now());
+        // New partners start unverified: the Aadhaar check (kyc.js) approves them.
+        .run(phone, String(name).trim(), hashPin(pin), 0, skill_tier, JSON.stringify(tags), upi_id || `${phone}@upi`, ['EN', 'TE', 'HI'].includes(language) ? language : 'EN', now());
       w = svc.getWorker(Number(r.lastInsertRowid));
     }
     res.json({ token: signToken('worker', w.id), worker: svc.publicWorker(w) });
@@ -127,12 +131,26 @@ export function createApp() {
   // it only re-reads GitHub releases (throttled), so calling it can't do anything but announce a real release.
   app.post('/api/releases/check', async (req, res) => res.json({ sent: await announceNewReleases() }));
 
-  // Ops: mark a newly registered worker's KYC as verified.
-  app.post('/api/admin/workers/:id/kyc', (req, res) => {
+  // ---------- worker ID check (Aadhaar Secure QR + selfie) ----------
+  app.get('/api/workers/me/kyc', W, (req, res) => res.json(kyc.kycStatus(req.auth.id)));
+  app.post('/api/workers/me/kyc', W, (req, res) => res.json(kyc.submitKyc(req.auth.id, req.body || {})));
+  app.get('/api/workers/:id/photo', (req, res) => {
+    const img = kyc.workerPhoto(Number(req.params.id));
+    if (!img) return res.sendStatus(404);
+    res.set('cache-control', 'public, max-age=3600').type('image/jpeg').send(Buffer.from(img));
+  });
+
+  // ---------- ops ----------
+  const admin = (req) => {
     const key = process.env.ADMIN_KEY;
     if (!key || !safeEqual(req.headers['x-admin-key'] || '', key)) throw new svc.ApiError(401, 'Admin key required');
-    db.prepare('UPDATE workers SET kyc_verified = ? WHERE id = ?').run(req.body.verified === false ? 0 : 1, Number(req.params.id));
-    res.json(svc.publicWorker(svc.getWorker(Number(req.params.id))));
+  };
+  app.get('/admin', (req, res) => res.type('html').send(ADMIN_PAGE));
+  app.get('/api/admin/kyc', (req, res) => { admin(req); res.json(kyc.listKyc(['PENDING', 'VERIFIED', 'REJECTED'].includes(req.query.status) ? req.query.status : 'PENDING')); });
+  app.post('/api/admin/kyc/reset', (req, res) => { admin(req); res.json(kyc.resetKyc(req.body.phone)); });
+  app.post('/api/admin/workers/:id/kyc', (req, res) => {
+    admin(req);
+    res.json(kyc.reviewKyc(Number(req.params.id), { verified: req.body.verified !== false, note: req.body.note, block: !!req.body.block }));
   });
 
   // ---------- WhatsApp bridge ----------

@@ -9,6 +9,7 @@ import {
 import JobAlert from './JobAlert.jsx';
 import ActiveJob from './ActiveJob.jsx';
 import Passbook from './Passbook.jsx';
+import { KycCard } from './Kyc.jsx';
 
 const LANG_KEY = 'krewzo.partner.lang';
 const readLang = () => { try { return localStorage.getItem(LANG_KEY); } catch { return null; } };
@@ -164,6 +165,7 @@ function Login({ t, lang, setLang, onDone }) {
             ))}
           </div>
         </Field>
+        <div className="rounded-2xl bg-surface border border-line p-3 text-sm text-muted">🪪 {t.kyc_phone_note}</div>
         <Field label={t.upi}>
           <input value={reg.upi_id} onChange={(e) => setReg({ ...reg, upi_id: e.target.value.trim() })} placeholder={`${phone}@upi`} className="w-full h-14 rounded-2xl bg-surface border border-line focus:border-lime outline-none text-lg px-4 placeholder:text-muted/50" />
         </Field>
@@ -316,7 +318,7 @@ function Main({ t, lang, setLang, onLogout }) {
     <div className="min-h-full pb-28">
       {tab === 'home' && (active
         ? <ActiveJob t={t} lang={lang} job={active} onChange={setActive} onDone={() => { setActive(null); load(); }} />
-        : <HomeTab t={t} lang={lang} home={home} online={online} busy={busy} geoErr={geoErr} onToggle={toggleDuty} />)}
+        : <HomeTab t={t} lang={lang} home={home} online={online} busy={busy} geoErr={geoErr} onToggle={toggleDuty} onReload={load} />)}
       {tab === 'earnings' && <Passbook t={t} />}
       {tab === 'profile' && <Profile t={t} w={w} lang={lang} setLang={setLang} onLogout={onLogout} />}
       <NavBar t={t} tab={tab} setTab={setTab} badge={!!active} />
@@ -368,7 +370,7 @@ function NavBar({ t, tab, setTab, badge }) {
   );
 }
 
-function HomeTab({ t, lang, home, online, busy, geoErr, onToggle }) {
+function HomeTab({ t, lang, home, online, busy, geoErr, onToggle, onReload }) {
   const w = home.worker;
   return (
     <div className="p-5 flex flex-col gap-4">
@@ -399,7 +401,7 @@ function HomeTab({ t, lang, home, online, busy, geoErr, onToggle }) {
         )}
       </section>
 
-      {!w.kyc_verified && <Notice icon={ShieldAlert}>{t.kyc_pending}</Notice>}
+      {!w.kyc_verified && <KycCard t={t} onVerified={onReload} />}
       {geoErr && <Notice icon={MapPinOff}>{t.location_off}</Notice>}
       <AlertsSetup t={t} />
 
