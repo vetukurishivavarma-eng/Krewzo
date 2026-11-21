@@ -141,3 +141,12 @@ test('credit passbook needs NBFC key', async () => {
   assert.equal(c.on_time_completion_rate, 1);
   assert.ok(c.krewzo_score > 300);
 });
+
+test('five wrong PINs lock the login, even with the right PIN', async () => {
+  const wrong = () => call('POST', '/api/auth/worker', { phone: '9000000005', pin: '0000' });
+  for (let i = 4; i >= 1; i--) assert.match((await wrong()).body.error, new RegExp(`${i} tr`));
+  assert.equal((await wrong()).status, 429);
+  const right = await call('POST', '/api/auth/worker', { phone: '9000000005', pin: '1234' });
+  assert.equal(right.status, 429);
+  assert.equal((await call('POST', '/api/auth/customer', { phone: '9999999999', pin: '1234' })).status, 200); // other accounts unaffected
+});

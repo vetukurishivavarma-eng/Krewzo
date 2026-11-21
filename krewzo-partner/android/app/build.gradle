@@ -1,5 +1,9 @@
 apply plugin: 'com.android.application'
 
+// Version comes from ../../package.json (bump it there only); 1.2.3 -> versionCode 10203.
+def appVersion = new groovy.json.JsonSlurper().parse(file('../../package.json')).version
+def appVersionCode = appVersion.tokenize('.').collect { it as int }.inject(0) { acc, n -> acc * 100 + n }
+
 android {
     namespace = "in.krewzo.partner"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +11,8 @@ android {
         applicationId "in.krewzo.partner"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

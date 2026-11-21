@@ -9,6 +9,23 @@ import * as svc from './service.js';
 import { extractMessages, handleMessage, notifyWhatsApp, sendWhatsApp } from './whatsapp.js';
 import { seedIfEmpty } from './seed.js';
 
+// Wrong-PIN lockout: 5 misses locks that phone+role for 15 min (a 4-digit PIN is only 10,000 guesses).
+// ponytail: in-memory, so it resets on restart and isn't shared across instances; move to the DB if we scale out.
+const MAX_PIN_TRIES = 5, PIN_LOCK_MS = 15 * 60e3;
+const pinFails = new Map(); // 'worker:9xxxxxxxxx' -> { n, until }
+function verifyPin(key, pin, hash) {
+  const nowMs = Date.now();
+  let f = pinFails.get(key);
+  if (f?.until > nowMs) throw new svc.ApiError(429, `Too many wrong PINs. Try again in ${Math.ceil((f.until - nowMs) / 60e3)} min`);
+  if (checkPin(pin, hash)) { pinFails.delete(key); return; }
+  if (!f || f.until) f = { n: 0, until: 0 }; // first miss, or the previous lock has expired
+  f.n += 1;
+  if (f.n >= MAX_PIN_TRIES) f.until = nowMs + PIN_LOCK_MS;
+  pinFails.set(key, f);
+  const left = MAX_PIN_TRIES - f.n;
+  throw new svc.ApiError(left ? 401 : 429, left ? `Wrong PIN. ${left} ${left === 1 ? 'try' : 'tries'} left` : 'Too many wrong PINs. Try again in 15 min');
+}
+
 export function createApp() {
   seedIfEmpty();
   const app = express();
@@ -37,7 +54,7 @@ export function createApp() {
     if (!validPhone(phone)) throw new svc.ApiError(400, 'Enter a 10-digit mobile number');
     if (!validPin(pin)) throw new svc.ApiError(400, 'PIN must be 4 digits');
     let u = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
-    if (u && !checkPin(pin, u.pin_hash)) throw new svc.ApiError(401, 'Wrong PIN');
+    if (u) verifyPin('customer:' + phone, pin, u.pin_hash);
     if (!u) {
       if (!name || String(name).trim().length < 2) throw new svc.ApiError(400, 'New here? Enter your name');
       const r = db.prepare('INSERT INTO users (phone, name, pin_hash, created_at) VALUES (?,?,?,?)').run(phone, String(name).trim(), hashPin(pin), now());
@@ -52,15 +69,16 @@ export function createApp() {
     if (!validPhone(phone)) throw new svc.ApiError(400, 'Enter a 10-digit mobile number');
     if (!validPin(pin)) throw new svc.ApiError(400, 'PIN must be 4 digits');
     let w = svc.getWorkerByPhone(phone);
-    if (w && !checkPin(pin, w.pin_hash)) throw new svc.ApiError(401, 'Wrong PIN');
+    if (w) verifyPin('worker:' + phone, pin, w.pin_hash);
     if (!w) {
       const { name, skill_tier, trade_tags = [], upi_id, language = 'EN' } = req.body;
       if (!name) return res.status(404).json({ error: 'NEW_WORKER', message: 'New partner — tell us your name and work' });
       if (!SKILL_TIERS[skill_tier]) throw new svc.ApiError(400, 'Pick your work level');
       const tags = trade_tags.filter((t) => TRADE_TAGS[t]);
       if (!tags.length) throw new svc.ApiError(400, 'Pick at least one work type');
-      const r = db.prepare('INSERT INTO workers (phone, name, pin_hash, skill_tier, trade_tags, upi_id, language, created_at) VALUES (?,?,?,?,?,?,?,?)')
-        .run(phone, String(name).trim(), hashPin(pin), skill_tier, JSON.stringify(tags), upi_id || `${phone}@upi`, ['EN', 'TE', 'HI'].includes(language) ? language : 'EN', now());
+      const r = db.prepare('INSERT INTO workers (phone, name, pin_hash, kyc_verified, skill_tier, trade_tags, upi_id, language, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+        // AUTO_KYC=1 is for testing only: new partners skip the ops ID check. Remove it before launch.
+        .run(phone, String(name).trim(), hashPin(pin), process.env.AUTO_KYC === '1' ? 1 : 0, skill_tier, JSON.stringify(tags), upi_id || `${phone}@upi`, ['EN', 'TE', 'HI'].includes(language) ? language : 'EN', now());
       w = svc.getWorker(Number(r.lastInsertRowid));
     }
     res.json({ token: signToken('worker', w.id), worker: svc.publicWorker(w) });

@@ -86,7 +86,7 @@ function Login({ t, lang, setLang, onDone }) {
       onDone(r.token);
     } catch (e) {
       if (e.data?.error === 'NEW_WORKER') setStep('register');
-      else { setErr(e.message); if (e.status === 401) setPin(''); }
+      else { setErr(e.message); if (e.status === 401 || e.status === 429) setPin(''); }
     }
   }
   useEffect(() => { if (step === 'pin' && pin.length === 4) submit(); }, [pin]); // eslint-disable-line
