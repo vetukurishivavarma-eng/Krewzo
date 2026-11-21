@@ -222,6 +222,7 @@ function Main({ t, lang, setLang, onLogout }) {
   const [tab, setTab] = useState('home');
   const [geoErr, setGeoErr] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dutyErr, setDutyErr] = useState('');
   const [cancelled, setCancelled] = useState(null);
   const activeRef = useRef(null);
   activeRef.current = active;
@@ -305,7 +306,7 @@ function Main({ t, lang, setLang, onLogout }) {
       await api('PATCH', '/workers/me', { is_online: goOnline, ...loc });
       speak(lang, goOnline ? 'on' : 'off');
       await load();
-    } finally { setBusy(false); }
+    } catch (e) { setDutyErr(e.message); } finally { setBusy(false); }
   }
 
   if (!home) return <Splash />;
@@ -321,7 +322,7 @@ function Main({ t, lang, setLang, onLogout }) {
     <div className="min-h-full pb-28">
       {tab === 'home' && (active
         ? <ActiveJob t={t} lang={lang} job={active} onChange={setActive} onDone={() => { setActive(null); load(); }} />
-        : <HomeTab t={t} lang={lang} home={home} online={online} busy={busy} geoErr={geoErr} onToggle={toggleDuty} onReload={load} />)}
+        : <HomeTab t={t} lang={lang} home={home} online={online} busy={busy} geoErr={geoErr} dutyErr={dutyErr} onToggle={toggleDuty} onReload={load} />)}
       {tab === 'earnings' && <Passbook t={t} />}
       {tab === 'profile' && <Profile t={t} w={w} lang={lang} setLang={setLang} onLogout={onLogout} onReload={load} />}
       <NavBar t={t} tab={tab} setTab={setTab} badge={!!active} />
@@ -373,7 +374,8 @@ function NavBar({ t, tab, setTab, badge }) {
   );
 }
 
-function HomeTab({ t, lang, home, online, busy, geoErr, onToggle, onReload }) {
+function HomeTab({ t, lang, home, online, busy, geoErr, dutyErr, onToggle, onReload }) {
+  const paused = home.worker.suspended_until && Date.parse(home.worker.suspended_until) > Date.now();
   const w = home.worker;
   return (
     <div className="p-5 flex flex-col gap-4">
@@ -404,6 +406,8 @@ function HomeTab({ t, lang, home, online, busy, geoErr, onToggle, onReload }) {
         )}
       </section>
 
+      {paused && <Notice icon={ShieldAlert}>{t.suspended} {new Date(w.suspended_until).toLocaleDateString('en-IN')}</Notice>}
+      {dutyErr && !paused && <ErrorNote>{dutyErr}</ErrorNote>}
       {!w.kyc_verified && <KycCard t={t} onVerified={onReload} />}
       {geoErr && <Notice icon={MapPinOff}>{t.location_off}</Notice>}
       <AlertsSetup t={t} />

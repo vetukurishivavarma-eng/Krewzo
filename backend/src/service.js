@@ -7,6 +7,7 @@ import { db, now, tx } from './db.js';
 import { newHandshake, checkHandshake } from './handshake.js';
 import { sendPush } from './push.js';
 import { businessFor, checkMonthly } from './business.js';
+import { checkBookingLimits, isSuspended } from './safety.js';
 
 export class ApiError extends Error {
   constructor(status, message, extra = {}) { super(message); this.status = status; this.extra = extra; }
@@ -17,7 +18,7 @@ const fail = (status, msg, extra) => { throw new ApiError(status, msg, extra); }
 const hooks = { emit: () => {}, isConnected: () => false, notifyWhatsApp: () => {} };
 export const setHooks = (h) => Object.assign(hooks, h);
 
-const ref = (p) => p + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
+export const ref = (p) => p + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
 
 // ---------- reads ----------
 const parseBooking = (r) => r && {
@@ -33,7 +34,7 @@ export const getBooking = (id) => parseBooking(db.prepare('SELECT * FROM booking
 export const getWorker = (id) => parseWorker(db.prepare('SELECT * FROM workers WHERE id = ?').get(id));
 export const getWorkerByPhone = (p) => parseWorker(db.prepare('SELECT * FROM workers WHERE phone = ?').get(p));
 export const getUser = (id) => parseUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id));
-const getEscrow = (bookingId) => db.prepare('SELECT * FROM escrow_ledger WHERE booking_id = ?').get(bookingId);
+export const getEscrow = (bookingId) => db.prepare('SELECT * FROM escrow_ledger WHERE booking_id = ?').get(bookingId);
 
 export function publicWorker(w) {
   if (!w) return null;
@@ -64,13 +65,13 @@ export function viewFor(b, role) {
   return out;
 }
 
-function broadcast(b) {
+export function broadcast(b) {
   hooks.emit(`customer:${b.customer_id}`, 'booking:update', viewFor(b, 'customer'));
   if (b.worker_id) hooks.emit(`worker:${b.worker_id}`, 'booking:update', viewFor(b, 'worker'));
 }
 
 // Optimistic, state-machine-checked update. Throws if the booking moved under us.
-function transition(b, to, patch = {}) {
+export function transition(b, to, patch = {}) {
   if (!canTransition(b.status, to)) fail(409, `Cannot go from ${b.status} to ${to}`);
   const cols = { ...patch, status: to };
   const keys = Object.keys(cols);
@@ -91,7 +92,7 @@ export function createBookings(customer, input) {
   if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) fail(400, 'Set the location pin');
   if (!address || String(address).trim().length < 3) fail(400, 'Enter the address');
   // Krewzo Business: plan discount, wider worker search, and the option to put the job on the monthly bill.
-  const biz = businessFor(customer.id);
+  const biz = input.bill_to === 'PERSONAL' ? null : businessFor(customer.id); // team members can also book for themselves
   const pay_mode = input.pay_mode === 'MONTHLY' ? 'MONTHLY' : 'UPI';
   if (pay_mode === 'MONTHLY' && !biz) fail(402, 'Monthly billing needs a Krewzo Business plan');
   if (pay_mode === 'UPI' && !UPI_RE.test(upi_id || '')) fail(400, 'Enter a valid UPI ID (name@bank)');
@@ -112,6 +113,7 @@ export function createBookings(customer, input) {
   let q;
   try { q = quotePrice({ skill_tier, duration, worker_count, addons: input.addons || [], insurance: !!input.insurance, fee_discount: biz?.info.fee_off || 0 }); }
   catch (e) { fail(400, e.message); }
+  checkBookingLimits(customer.id, worker_count);
   if (pay_mode === 'MONTHLY') checkMonthly(biz, q.total.escrow_total);
   const payer = pay_mode === 'MONTHLY' ? 'monthly-bill' : upi_id;
   const dispatch_km = biz?.info.radius_km || DISPATCH_RADIUS_KM;
@@ -125,13 +127,13 @@ export function createBookings(customer, input) {
     const groupId = Number(g.lastInsertRowid);
     const p = q.per_worker;
     const ins = db.prepare(`INSERT INTO bookings (group_id, customer_id, skill_tier, trade_tag, worker_count, booking_mode, scheduled_at, duration, lat, lng, address, addons,
-      base_wage, addons_total, platform_fee, gst_amount, insurance_fee, worker_payout, escrow_total, status, created_at, dispatch_km)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      base_wage, addons_total, platform_fee, gst_amount, insurance_fee, worker_payout, escrow_total, status, created_at, dispatch_km, searching_since)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     const esc = db.prepare(`INSERT INTO escrow_ledger (booking_id, amount_held, worker_payout, platform_fee, status, tx_ref, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`);
     const out = [];
     for (let i = 0; i < worker_count; i++) {
       const r = ins.run(groupId, customer.id, skill_tier, trade_tag, worker_count, booking_mode, scheduled_at, duration, lat, lng, String(address).trim(),
-        JSON.stringify(q.addons), p.base_wage, p.addons_total, p.platform_fee, p.gst_amount, p.insurance_fee, p.worker_payout, p.escrow_total, S.SEARCHING, t, dispatch_km);
+        JSON.stringify(q.addons), p.base_wage, p.addons_total, p.platform_fee, p.gst_amount, p.insurance_fee, p.worker_payout, p.escrow_total, S.SEARCHING, t, dispatch_km, t);
       const id = Number(r.lastInsertRowid);
       esc.run(id, p.escrow_total, p.worker_payout, p.escrow_total - p.worker_payout, 'HELD', payment_ref, t, t);
       out.push(id);
@@ -178,7 +180,7 @@ function clashes(workerId, b) {
 }
 
 function eligible(w, b) {
-  if (!w.is_online || !w.kyc_verified || w.lat == null) return null;
+  if (!w.is_online || !w.kyc_verified || w.lat == null || isSuspended(w)) return null;
   if (SKILL_TIERS[w.skill_tier].rank < SKILL_TIERS[b.skill_tier].rank) return null;
   if (b.skill_tier !== 'TIER_1' && !w.trade_tags.includes(b.trade_tag)) return null;
   const d = haversineKm(w, b);
@@ -197,6 +199,7 @@ export function offerView(b, distance_km, offeredAt = now()) {
     booking_id: b.id, payout: b.worker_payout, distance_km: Math.round(distance_km * 10) / 10, duration: b.duration,
     trade_tag: b.trade_tag, skill_tier: b.skill_tier, booking_mode: b.booking_mode, scheduled_at: b.scheduled_at, addons: b.addons,
     customer_name: (getUser(b.customer_id)?.name || '').split(' ')[0], area: area(b.address), expires_at: offerExpiry(offeredAt),
+    customer_rating: (({ rating, rating_count }) => (rating_count ? rating : null))(getUser(b.customer_id) || {}), // workers can avoid rude customers
   };
 }
 
@@ -257,7 +260,7 @@ function missOffer(workerId, bookingId, offeredAt) {
   sendPush('workers', getWorker(workerId), { dataOnly: true, ttlSec: 60, data: { type: 'job_taken', booking_id: bookingId } });
 }
 
-function expireOffers(bookingId, exceptWorker) {
+export function expireOffers(bookingId, exceptWorker) {
   const others = db.prepare("SELECT worker_id FROM job_offers WHERE booking_id = ? AND status = 'OFFERED' AND worker_id != ?").all(bookingId, exceptWorker ?? -1);
   db.prepare("UPDATE job_offers SET status = 'EXPIRED' WHERE booking_id = ? AND status = 'OFFERED' AND worker_id != ?").run(bookingId, exceptWorker ?? -1);
   others.forEach((o) => {
@@ -276,6 +279,7 @@ function ownTicket(worker, id) {
 export function acceptJob(workerId, bookingId) {
   const w = getWorker(workerId);
   if (!w.kyc_verified) fail(403, 'KYC not verified yet');
+  if (isSuspended(w)) fail(403, 'Your account is paused. Call Krewzo help.');
   if (!w.is_online) fail(409, 'Go ON DUTY first');
   if (isBusy(w.id) && !getBooking(bookingId)?.scheduled_at) fail(409, 'Finish your current job first');
   const o = db.prepare('SELECT status, created_at FROM job_offers WHERE booking_id = ? AND worker_id = ?').get(bookingId, w.id);
@@ -302,7 +306,7 @@ export function skipJob(workerId, bookingId) {
 
 export function releaseJob(workerId, bookingId) {
   const w = getWorker(workerId);
-  const b = transition(ownTicket(w, bookingId), S.SEARCHING, { worker_id: null, assigned_at: null, start_handshake: null, handshake_fails: 0 });
+  const b = transition(ownTicket(w, bookingId), S.SEARCHING, { worker_id: null, assigned_at: null, start_handshake: null, handshake_fails: 0, searching_since: now() });
   db.prepare("UPDATE job_offers SET status = 'RELEASED' WHERE booking_id = ? AND worker_id = ?").run(b.id, w.id);
   broadcast(b);
   pushCustomer(b, 'Finding you another worker', `${w.name} can't make it. Your money is still safe in escrow.`);
@@ -330,6 +334,7 @@ export function verifyHandshake(workerId, bookingId, method, payload) {
   if (!phase) fail(409, 'Nothing to verify for this job');
   const key = phase === 'START' ? 'start_handshake' : 'end_handshake';
   const hs = b[key];
+  if (b.disputed) fail(423, 'Payment is on hold: the customer reported a problem. Krewzo will call you.', { code: 'DISPUTED' });
   if (b.handshake_locked) fail(423, 'Codes are locked after too many wrong tries. The customer must create a new code in their app.', { locked: true });
   if (phase === 'END' && Date.now() - Date.parse(b.started_at) < FINISH_MIN_MINUTES * 60e3) {
     fail(409, `The finish code works ${FINISH_MIN_MINUTES} minutes after the start.`, { code: 'TOO_EARLY' });
@@ -387,7 +392,7 @@ export function newCode(customerId, bookingId) {
 }
 
 // COMPLETED -> PAID_OUT. Must run inside a transaction.
-function releaseEscrow(b) {
+export function releaseEscrow(b) {
   const e = getEscrow(b.id);
   if (!e || e.status !== 'HELD') fail(409, 'Escrow is not held');
   const tx_ref = ref('UPI');
@@ -476,7 +481,7 @@ export function setPushToken(table, id, token) {
 }
 
 // Customer pushes for the moments they're not watching the app (start/end/cancel happen with them present).
-function pushCustomer(b, title, body) {
+export function pushCustomer(b, title, body) {
   sendPush('users', getUser(b.customer_id), { title, body, channel: 'updates', ttlSec: 900, data: { group_id: b.group_id } });
 }
 
@@ -492,6 +497,7 @@ export function setWorkerStatus(workerId, { is_online, lat, lng, language, fcm_t
     if (!['EN', 'TE', 'HI'].includes(language)) fail(400, 'Bad language');
     db.prepare('UPDATE workers SET language = ? WHERE id = ?').run(language, w.id);
   }
+  if (is_online && isSuspended(w)) fail(403, `Your account is paused until ${new Date(w.suspended_until).toLocaleDateString('en-IN')}. Call Krewzo help.`);
   if (is_online != null) db.prepare('UPDATE workers SET is_online = ? WHERE id = ?').run(is_online ? 1 : 0, w.id);
   const nw = getWorker(w.id);
   if (nw.is_online) dispatchToWorker(nw.id);

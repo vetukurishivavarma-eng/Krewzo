@@ -7,7 +7,7 @@
     "dev": "node --watch --no-warnings src/index.js",
     "start": "node --no-warnings src/index.js",
     "seed": "node --no-warnings src/seed.js",
-    "test": "node --no-warnings --test test/loop.test.js test/offer-expiry.test.js test/kyc.test.js test/business.test.js"
+    "test": "node --no-warnings --test test/loop.test.js test/offer-expiry.test.js test/kyc.test.js test/business.test.js test/safety.test.js"
   },
   "dependencies": {
     "@krewzo/shared": "*",

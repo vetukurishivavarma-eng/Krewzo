@@ -129,7 +129,9 @@ export function resume(userId) {
 }
 
 // ---------- team ----------
-const teamSize = (ownerId) => 1 + db.prepare('SELECT COUNT(*) AS n FROM users WHERE business_owner_id = ?').get(ownerId).n;
+// Seats count the owner, members and invites still waiting for an answer.
+const teamSize = (ownerId) => 1 + db.prepare('SELECT COUNT(*) AS n FROM users WHERE business_owner_id = ?').get(ownerId).n
+  + db.prepare('SELECT COUNT(*) AS n FROM team_invites WHERE owner_id = ?').get(ownerId).n;
 
 export function addMember(userId, phone) {
   const biz = ownerOnly(userId);
@@ -139,14 +141,36 @@ export function addMember(userId, phone) {
   if (m.id === biz.owner_id) fail(400, "That's your own number");
   if (m.business_owner_id && m.business_owner_id !== biz.owner_id) fail(409, 'That person is already on another business team');
   if (current(m.id)) fail(409, 'That person has their own Business plan');
-  if (m.business_owner_id !== biz.owner_id && teamSize(biz.owner_id) >= biz.info.seats) fail(409, `${biz.info.name} allows ${biz.info.seats} people. Upgrade to add more.`);
-  db.prepare('UPDATE users SET business_owner_id = ? WHERE id = ?').run(biz.owner_id, m.id);
+  if (m.business_owner_id === biz.owner_id) fail(409, 'Already on your team');
+  if (db.prepare('SELECT 1 FROM team_invites WHERE owner_id = ? AND member_id = ?').get(biz.owner_id, m.id)) fail(409, 'Already invited. They need to accept in their Krewzo app.');
+  if (teamSize(biz.owner_id) >= biz.info.seats) fail(409, `${biz.info.name} allows ${biz.info.seats} people. Upgrade to add more.`);
+  // An invite, not a direct add: joining means your bookings can go on someone else's bill, so the person must agree.
+  db.prepare('INSERT INTO team_invites (owner_id, member_id, created_at) VALUES (?,?,?)').run(biz.owner_id, m.id, now());
+  return overview(userId);
+}
+
+export function answerInvite(userId, ownerId, accept) {
+  const inv = db.prepare('SELECT 1 FROM team_invites WHERE owner_id = ? AND member_id = ?').get(ownerId, userId);
+  if (!inv) fail(404, 'Invite not found');
+  db.prepare('DELETE FROM team_invites WHERE owner_id = ? AND member_id = ?').run(ownerId, userId);
+  if (accept) {
+    const owner = current(ownerId);
+    if (!owner) fail(409, 'That business plan has ended');
+    if (current(userId)) fail(409, 'Cancel your own Business plan before joining a team');
+    db.prepare('UPDATE users SET business_owner_id = ? WHERE id = ?').run(ownerId, userId);
+  }
+  return overview(userId);
+}
+
+export function leaveTeam(userId) {
+  db.prepare('UPDATE users SET business_owner_id = NULL WHERE id = ?').run(userId);
   return overview(userId);
 }
 
 export function removeMember(userId, memberId) {
   const biz = ownerOnly(userId);
   db.prepare('UPDATE users SET business_owner_id = NULL WHERE id = ? AND business_owner_id = ?').run(memberId, biz.owner_id);
+  db.prepare('DELETE FROM team_invites WHERE owner_id = ? AND member_id = ?').run(biz.owner_id, memberId);
   return overview(userId);
 }
 
@@ -200,14 +224,20 @@ export function attendanceCsv(userId, month) {
 }
 
 // ---------- read ----------
+const invitesFor = (userId) => db.prepare(`SELECT i.owner_id, s.business_name, s.plan, u.name AS owner_name FROM team_invites i
+  JOIN subscriptions s ON s.owner_id = i.owner_id JOIN users u ON u.id = i.owner_id WHERE i.member_id = ? AND s.status != 'EXPIRED'`).all(userId)
+  .map((r) => ({ ...r, plan_name: PLANS[r.plan].name }));
+
 export function overview(userId) {
   const plans = Object.values(PLANS);
+  const invites = invitesFor(userId);
   const biz = businessFor(userId);
-  if (!biz) return { business: null, plans };
+  if (!biz) return { business: null, plans, invites };
   const owner = biz.role === 'OWNER';
   const month = istMonth();
   return {
     plans,
+    invites,
     business: {
       role: biz.role, plan: biz.plan, plan_name: biz.info.name, status: biz.status, renews_at: biz.renews_at,
       business_name: biz.business_name, gstin: biz.gstin, fee_off: biz.info.fee_off, radius_km: biz.info.radius_km,
@@ -215,6 +245,7 @@ export function overview(userId) {
       overdue: unpaidMonths(biz.owner_id),
       ...(owner && {
         members: db.prepare('SELECT id, name, phone FROM users WHERE business_owner_id = ? ORDER BY name').all(biz.owner_id),
+        invited: db.prepare('SELECT u.id, u.name, u.phone FROM team_invites i JOIN users u ON u.id = i.member_id WHERE i.owner_id = ? ORDER BY u.name').all(biz.owner_id),
         payments: db.prepare('SELECT plan, amount, gst_amount, period_start, period_end, tx_ref FROM subscription_payments WHERE owner_id = ? ORDER BY id DESC LIMIT 6').all(biz.owner_id),
       }),
     },

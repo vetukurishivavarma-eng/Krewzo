@@ -141,6 +141,15 @@ CREATE TABLE IF NOT EXISTS monthly_bills (
   owner_id INTEGER NOT NULL REFERENCES users(id), month TEXT NOT NULL, amount INTEGER NOT NULL, tx_ref TEXT NOT NULL, paid_at TEXT NOT NULL,
   PRIMARY KEY (owner_id, month)
 );
+CREATE TABLE IF NOT EXISTS worker_strikes (id INTEGER PRIMARY KEY, worker_id INTEGER NOT NULL REFERENCES workers(id), booking_id INTEGER, reason TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY, booking_id INTEGER NOT NULL REFERENCES bookings(id), reporter_role TEXT NOT NULL CHECK (reporter_role IN ('customer','worker')),
+  reporter_id INTEGER NOT NULL, category TEXT NOT NULL, details TEXT, payment_held INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('OPEN','RESOLVED')), resolution TEXT, note TEXT, created_at TEXT NOT NULL, resolved_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sos_alerts (id INTEGER PRIMARY KEY, booking_id INTEGER, role TEXT NOT NULL, user_id INTEGER NOT NULL, lat REAL, lng REAL, created_at TEXT NOT NULL, handled_at TEXT);
+CREATE TABLE IF NOT EXISTS auth_limits (key TEXT PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS team_invites (owner_id INTEGER NOT NULL REFERENCES users(id), member_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, PRIMARY KEY (owner_id, member_id));
 CREATE TABLE IF NOT EXISTS kyc_blocklist (identity_hash TEXT PRIMARY KEY, reason TEXT, created_at TEXT NOT NULL);
 `);
 
@@ -157,6 +166,11 @@ for (const sql of [
   'ALTER TABLE bookings ADD COLUMN handshake_total INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE bookings ADD COLUMN handshake_locked INTEGER NOT NULL DEFAULT 0',
   // unguessable link to a verified worker's selfie (was /api/workers/<id>/photo, easy to scrape)
   'ALTER TABLE workers ADD COLUMN photo_token TEXT',
+  // trust & safety (safety.js)
+  'ALTER TABLE bookings ADD COLUMN searching_since TEXT', 'ALTER TABLE bookings ADD COLUMN cancel_reason TEXT',
+  'ALTER TABLE bookings ADD COLUMN disputed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE bookings ADD COLUMN worker_rating INTEGER',
+  'ALTER TABLE workers ADD COLUMN suspended_until TEXT',
+  'ALTER TABLE users ADD COLUMN rating REAL NOT NULL DEFAULT 5', 'ALTER TABLE users ADD COLUMN rating_count INTEGER NOT NULL DEFAULT 0',
 ]) { try { db.exec(sql); } catch {} }
 
 export const now = () => new Date().toISOString();

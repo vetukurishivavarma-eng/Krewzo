@@ -53,7 +53,7 @@ export default function JobAlert({ t, lang, offer, count, onAccept, onSkip, onTi
         <div className="flex flex-wrap justify-center gap-2 mt-6">
           <Chip icon={MapPin}>{offer.distance_km} {t.km}</Chip>
           <Chip icon={Clock}>{hours} {t.hours}</Chip>
-          {offer.customer_name && <Chip icon={UserRound}>{offer.customer_name}</Chip>}
+          {offer.customer_name && <Chip icon={UserRound}>{offer.customer_name}{offer.customer_rating ? ` ★${Number(offer.customer_rating).toFixed(1)}` : ''}</Chip>}
         </div>
         {offer.area && <div className="text-muted mt-3 text-center">{offer.area}</div>}
         {when && <div className="mt-3 rounded-2xl bg-amber/15 border border-amber/30 text-amber px-4 py-2 font-bold flex items-center gap-2"><CalendarClock size={18} /> {t.scheduled}: {when}</div>}

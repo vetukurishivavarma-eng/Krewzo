@@ -11,24 +11,10 @@ import { seedIfEmpty } from './seed.js';
 import { announceNewReleases } from './releases.js';
 import * as kyc from './kyc.js';
 import * as biz from './business.js';
+import * as safety from './safety.js';
 import { ADMIN_PAGE } from './admin-page.js';
 
-// Wrong-PIN lockout: 5 misses locks that phone+role for 15 min (a 4-digit PIN is only 10,000 guesses).
-// ponytail: in-memory, so it resets on restart and isn't shared across instances; move to the DB if we scale out.
-const MAX_PIN_TRIES = 5, PIN_LOCK_MS = 15 * 60e3;
-const pinFails = new Map(); // 'worker:9xxxxxxxxx' -> { n, until }
-function verifyPin(key, pin, hash) {
-  const nowMs = Date.now();
-  let f = pinFails.get(key);
-  if (f?.until > nowMs) throw new svc.ApiError(429, `Too many wrong PINs. Try again in ${Math.ceil((f.until - nowMs) / 60e3)} min`);
-  if (checkPin(pin, hash)) { pinFails.delete(key); return; }
-  if (!f || f.until) f = { n: 0, until: 0 }; // first miss, or the previous lock has expired
-  f.n += 1;
-  if (f.n >= MAX_PIN_TRIES) f.until = nowMs + PIN_LOCK_MS;
-  pinFails.set(key, f);
-  const left = MAX_PIN_TRIES - f.n;
-  throw new svc.ApiError(left ? 401 : 429, left ? `Wrong PIN. ${left} ${left === 1 ? 'try' : 'tries'} left` : 'Too many wrong PINs. Try again in 15 min');
-}
+// Wrong-PIN lockout and per-network login limits live in safety.js (stored in the DB, so restarts don't reset them).
 
 // ?dl=<id>.<expiry>.<hmac> from /api/download-link: valid 5 minutes, for that exact file path, customer role only.
 function readDownload(req) {
@@ -41,6 +27,7 @@ function readDownload(req) {
 export function createApp() {
   seedIfEmpty();
   const app = express();
+  app.set('trust proxy', 1);
   const server = http.createServer(app);
   const io = new Server(server, { cors: { origin: true } });
 
@@ -67,12 +54,13 @@ export function createApp() {
 
   // ---------- auth ----------
   app.post('/api/auth/customer', (req, res) => {
+    safety.limitIp(req.ip);
     const phone = normPhone(req.body.phone);
     const { pin, name } = req.body;
     if (!validPhone(phone)) throw new svc.ApiError(400, 'Enter a 10-digit mobile number');
     if (!validPin(pin)) throw new svc.ApiError(400, 'PIN must be 4 digits');
     let u = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
-    if (u) verifyPin('customer:' + phone, pin, u.pin_hash);
+    if (u) safety.verifyPinLimited('customer:' + phone, checkPin(pin, u.pin_hash));
     if (!u) {
       if (!name || String(name).trim().length < 2) throw new svc.ApiError(400, 'New here? Enter your name');
       const r = db.prepare('INSERT INTO users (phone, name, pin_hash, created_at) VALUES (?,?,?,?)').run(phone, String(name).trim(), hashPin(pin), now());
@@ -82,12 +70,13 @@ export function createApp() {
   });
 
   app.post('/api/auth/worker', (req, res) => {
+    safety.limitIp(req.ip);
     const phone = normPhone(req.body.phone);
     const { pin } = req.body;
     if (!validPhone(phone)) throw new svc.ApiError(400, 'Enter a 10-digit mobile number');
     if (!validPin(pin)) throw new svc.ApiError(400, 'PIN must be 4 digits');
     let w = svc.getWorkerByPhone(phone);
-    if (w) verifyPin('worker:' + phone, pin, w.pin_hash);
+    if (w) safety.verifyPinLimited('worker:' + phone, checkPin(pin, w.pin_hash));
     if (!w) {
       const { name, skill_tier, trade_tags = [], upi_id, language = 'EN' } = req.body;
       if (!name) return res.status(404).json({ error: 'NEW_WORKER', message: 'New partner — tell us your name and work' });
@@ -112,6 +101,11 @@ export function createApp() {
   app.get('/api/bookings', auth('customer'), (req, res) => res.json(svc.listGroups(req.auth.id)));
   app.get('/api/groups/:gid', auth('customer'), (req, res) => res.json(svc.getGroup(req.auth.id, Number(req.params.gid))));
   app.get('/api/bookings/:id/cancel-quote', auth('customer'), (req, res) => res.json(svc.cancelQuote(req.auth.id, Number(req.params.id))));
+  // ---------- trust & safety ----------
+  app.post('/api/bookings/:id/no-show', auth('customer'), (req, res) => res.json(safety.reportNoShow(req.auth.id, Number(req.params.id))));
+  app.post('/api/bookings/:id/report', auth(), (req, res) => res.json(safety.reportProblem(req.auth.role, req.auth.id, Number(req.params.id), req.body || {})));
+  app.post('/api/bookings/:id/rate-customer', auth('worker'), (req, res) => res.json(safety.rateCustomer(req.auth.id, Number(req.params.id), req.body?.stars)));
+  app.post('/api/sos', auth(), (req, res) => res.json(safety.raiseSos(req.auth.role, req.auth.id, req.body || {})));
   app.post('/api/bookings/:id/new-code', auth('customer'), (req, res) => res.json(svc.newCode(req.auth.id, Number(req.params.id))));
   // One-time-ish download link (5 min, this file only) so invoices / CSVs can open in the browser without the login token in the URL.
   app.post('/api/download-link', auth('customer'), (req, res) => {
@@ -160,6 +154,9 @@ export function createApp() {
   app.post('/api/business/resume', C, (req, res) => res.json(biz.resume(req.auth.id)));
   app.post('/api/business/members', C, (req, res) => res.json(biz.addMember(req.auth.id, req.body?.phone)));
   app.delete('/api/business/members/:id', C, (req, res) => res.json(biz.removeMember(req.auth.id, Number(req.params.id))));
+  app.post('/api/business/invites/:ownerId/accept', C, (req, res) => res.json(biz.answerInvite(req.auth.id, Number(req.params.ownerId), true)));
+  app.post('/api/business/invites/:ownerId/decline', C, (req, res) => res.json(biz.answerInvite(req.auth.id, Number(req.params.ownerId), false)));
+  app.post('/api/business/leave', C, (req, res) => res.json(biz.leaveTeam(req.auth.id)));
   app.get('/api/business/statement', C, (req, res) => res.json(biz.statement(req.auth.id, req.query.month || undefined)));
   app.post('/api/business/statement/pay', C, (req, res) => res.json(biz.payBill(req.auth.id, req.body?.month)));
   app.get('/api/business/attendance.csv', C, (req, res) => {
@@ -184,6 +181,10 @@ export function createApp() {
   };
   app.get('/admin', (req, res) => res.type('html').send(ADMIN_PAGE));
   app.get('/api/admin/kyc', (req, res) => { admin(req); res.json(kyc.listKyc(['PENDING', 'VERIFIED', 'REJECTED'].includes(req.query.status) ? req.query.status : 'PENDING')); });
+  app.get('/api/admin/reports', (req, res) => { admin(req); res.json(safety.listReports(req.query.status === 'RESOLVED' ? 'RESOLVED' : 'OPEN')); });
+  app.post('/api/admin/reports/:id/resolve', (req, res) => { admin(req); res.json(safety.resolveReport(Number(req.params.id), req.body || {})); });
+  app.get('/api/admin/sos', (req, res) => { admin(req); res.json(safety.listSos()); });
+  app.post('/api/admin/sos/:id/handled', (req, res) => { admin(req); res.json(safety.handleSos(Number(req.params.id))); });
   app.post('/api/admin/kyc/reset', (req, res) => { admin(req); res.json(kyc.resetKyc(req.body.phone)); });
   app.post('/api/admin/workers/:id/kyc', (req, res) => {
     admin(req);

@@ -43,8 +43,11 @@ export default function Book({ user, onBooked }) {
   const [paying, setPaying] = useState(false);
   const [locating, setLocating] = useState(false);
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
-  const biz = user.business; // Krewzo Business plan (own or the team's): fee discount + monthly billing
-  const [payMode, setPayMode] = useState(biz ? 'MONTHLY' : 'UPI');
+  // Krewzo Business plan (own or the team's): fee discount + monthly billing. Can be switched off for a personal job.
+  const [billTo, setBillTo] = useState('BUSINESS');
+  const biz = billTo === 'BUSINESS' ? user.business : null;
+  const [payMode, setPayMode] = useState(user.business ? 'MONTHLY' : 'UPI');
+  const mode = biz ? payMode : 'UPI';
   const q = useMemo(() => quotePrice({ ...f, fee_discount: biz?.fee_off || 0 }), [f.skill_tier, f.duration, f.worker_count, f.addons, f.insurance, biz?.fee_off]); // eslint-disable-line
   const fullFee = useMemo(() => quotePrice({ ...f }).total.platform_fee, [f.skill_tier, f.duration, f.worker_count]); // eslint-disable-line
 
@@ -64,10 +67,10 @@ export default function Book({ user, onBooked }) {
 
   async function pay() {
     setErr('');
-    if (payMode === 'UPI' && !UPI_RE.test(f.upi_id)) return setErr('Enter your UPI ID, e.g. name@okhdfc');
+    if (mode === 'UPI' && !UPI_RE.test(f.upi_id)) return setErr('Enter your UPI ID, e.g. name@okhdfc');
     if (!biz && f.account_type === 'BUSINESS' && !GSTIN_RE.test(f.gstin.toUpperCase())) return setErr('GSTIN must be 15 characters, e.g. 36ABCDE1234F1Z5');
     setPaying(true);
-    try { onBooked(await api('POST', '/bookings', { ...f, pay_mode: payMode })); }
+    try { onBooked(await api('POST', '/bookings', { ...f, pay_mode: mode, bill_to: user.business && !biz ? 'PERSONAL' : undefined })); }
     catch (e) { setErr(e.message); setPaying(false); }
   }
 
@@ -80,6 +83,11 @@ export default function Book({ user, onBooked }) {
       <div className="pb-40">
         <PageHead title="Checkout" sub={`${TRADE_TAGS[f.trade_tag].label} · ${f.worker_count} × ${f.duration}`}
           right={<button onClick={() => setStep('book')} className="w-11 h-11 rounded-full bg-card border border-line flex items-center justify-center" aria-label="Back"><ArrowLeft size={20} /></button>} />
+        {user.business && (
+          <Section title="Bill to">
+            <Segment value={billTo} onChange={setBillTo} options={[['BUSINESS', Briefcase, user.business.business_name], ['PERSONAL', HomeIcon, 'Personal']]} />
+          </Section>
+        )}
         {biz ? (
           <Section title="Billing">
             <div className="rounded-3xl bg-ink text-paper p-4">
@@ -120,14 +128,14 @@ export default function Book({ user, onBooked }) {
         </Section>
         <Section title="Pay with">
           {biz && <Segment value={payMode} onChange={setPayMode} options={[['MONTHLY', Receipt, 'Monthly bill'], ['UPI', Wallet, 'UPI now']]} />}
-          {payMode === 'UPI'
+          {mode === 'UPI'
             ? <input placeholder="yourname@okhdfc" value={f.upi_id} onChange={(e) => set({ upi_id: e.target.value.trim() })} className={`${field} w-full ${biz ? 'mt-2' : ''}`} />
             : <p className="text-sm text-muted mt-2">Added to the {biz.business_name} bill for this month. Pay once, by the 7th of next month.</p>}
         </Section>
         {err && <div className="px-4 text-sm text-danger font-semibold">{err}</div>}
         <div className={bar}>
           <button disabled={paying} onClick={pay} className="w-full h-14 rounded-2xl bg-ink text-paper text-lg font-bold disabled:opacity-60 flex items-center justify-center gap-2">
-            <ShieldCheck size={20} className="text-lime" />{paying ? (payMode === 'MONTHLY' ? 'Booking…' : 'Confirming UPI…') : payMode === 'MONTHLY' ? `Book · ${rupees(p.escrow_total)} on monthly bill` : `Pay ${rupees(p.escrow_total)} to escrow`}
+            <ShieldCheck size={20} className="text-lime" />{paying ? (mode === 'MONTHLY' ? 'Booking…' : 'Confirming UPI…') : mode === 'MONTHLY' ? `Book · ${rupees(p.escrow_total)} on monthly bill` : `Pay ${rupees(p.escrow_total)} to escrow`}
           </button>
         </div>
       </div>

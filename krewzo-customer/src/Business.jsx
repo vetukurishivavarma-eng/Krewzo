@@ -32,7 +32,8 @@ export default function Business({ user, onBack, onChanged }) {
   return (
     <>
       {head}
-      {!b ? <Plans plans={data.plans} user={user} onDone={update} /> : b.role === 'MEMBER' ? <Member b={b} /> : <Owner b={b} plans={data.plans} onDone={update} />}
+      {data.invites?.length > 0 && <Invites invites={data.invites} onDone={update} />}
+      {!b ? <Plans plans={data.plans} user={user} onDone={update} /> : b.role === 'MEMBER' ? <Member b={b} onDone={update} /> : <Owner b={b} plans={data.plans} onDone={update} />}
     </>
   );
 }
@@ -85,7 +86,29 @@ function Plans({ plans, user, onDone }) {
   );
 }
 
-function Member({ b }) {
+// Joining a team means your bookings can go on someone else's bill, so it needs your yes.
+function Invites({ invites, onDone }) {
+  const [err, setErr] = useState('');
+  const go = async (id, yes) => { setErr(''); try { onDone(await api('POST', `/business/invites/${id}/${yes ? 'accept' : 'decline'}`)); } catch (e) { setErr(e.message); } };
+  return (
+    <div className="px-4 pb-3 flex flex-col gap-2">
+      {invites.map((i) => (
+        <div key={i.owner_id} className="rounded-3xl bg-lime/30 border border-lime p-4">
+          <div className="font-bold">{i.business_name} invited you to their team</div>
+          <div className="text-sm text-muted mt-0.5">{i.plan_name} · from {i.owner_name}. You can choose "Personal" at checkout for your own jobs.</div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <button onClick={() => go(i.owner_id, false)} className="h-11 rounded-xl border border-line bg-card font-bold">Decline</button>
+            <button onClick={() => go(i.owner_id, true)} className="h-11 rounded-xl bg-ink text-paper font-bold">Join team</button>
+          </div>
+        </div>
+      ))}
+      {err && <div className="text-sm text-danger font-semibold">{err}</div>}
+    </div>
+  );
+}
+
+function Member({ b, onDone }) {
+  const leave = async () => onDone(await api('POST', '/business/leave'));
   return (
     <div className="px-4 pb-8 flex flex-col gap-3">
       <div className="rounded-3xl bg-ink text-paper p-5">
@@ -97,6 +120,7 @@ function Member({ b }) {
         <p>Your bookings use {b.business_name}'s plan: {b.fee_off === 1 ? 'no platform fee' : `${Math.round(b.fee_off * 100)}% off the platform fee`}, and you can put jobs on the monthly bill at checkout.</p>
         <Credit b={b} />
       </div>
+      <button onClick={leave} className="h-11 rounded-xl text-muted font-semibold">Leave this team</button>
     </div>
   );
 }
@@ -208,11 +232,11 @@ function Team({ b, run }) {
         <div className="font-bold flex items-center gap-2"><Users size={18} /> Team</div>
         <span className="text-sm text-muted">{b.seats_used} of {b.seats} people</span>
       </div>
-      <p className="text-xs text-muted -mt-1">Team members book with their own Krewzo login. Their jobs use your plan and can go on your monthly bill.</p>
-      {b.members.map((m) => (
+      <p className="text-xs text-muted -mt-1">Team members book with their own Krewzo login. They get an invite and must accept it. Their business jobs use your plan and can go on your monthly bill.</p>
+      {[...b.members, ...(b.invited || []).map((m) => ({ ...m, pending: true }))].map((m) => (
         <div key={m.id} className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-paper font-display font-extrabold flex items-center justify-center">{m.name[0]}</div>
-          <div className="flex-1 min-w-0"><div className="font-semibold truncate">{m.name}</div><div className="text-xs text-muted">+91 {m.phone}</div></div>
+          <div className="flex-1 min-w-0"><div className="font-semibold truncate">{m.name}</div><div className="text-xs text-muted">+91 {m.phone}{m.pending ? ' · invite sent, waiting' : ''}</div></div>
           <button onClick={() => run(() => api('DELETE', `/business/members/${m.id}`))} aria-label={`Remove ${m.name}`} className="w-10 h-10 rounded-full text-muted flex items-center justify-center"><Trash2 size={17} /></button>
         </div>
       ))}
@@ -220,7 +244,7 @@ function Team({ b, run }) {
         <div className="flex gap-2">
           <input inputMode="numeric" placeholder="Their Krewzo mobile number" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} className="flex-1 h-11 rounded-xl border border-line bg-card px-3 outline-none focus:border-ink" />
           <button disabled={phone.length !== 10} onClick={() => run(async () => { const r = await api('POST', '/business/members', { phone }); setPhone(''); return r; })}
-            className="h-11 px-4 rounded-xl bg-ink text-paper font-bold flex items-center gap-1.5 disabled:opacity-40"><UserPlus size={16} /> Add</button>
+            className="h-11 px-4 rounded-xl bg-ink text-paper font-bold flex items-center gap-1.5 disabled:opacity-40"><UserPlus size={16} /> Invite</button>
         </div>
       )}
     </section>

@@ -2,7 +2,7 @@
 // only for this browser tab. All worker data is rendered with textContent (never innerHTML).
 export const ADMIN_PAGE = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Krewzo ID checks</title>
+<title>Krewzo ops</title>
 <style>
 :root { --bg:#f6f3ee; --card:#fff; --ink:#15130f; --muted:#6f6a62; --line:#e6dfd4; --lime:#c8f031; --red:#d6403a; --amber:#b86e00; --green:#1f7a4d; }
 * { box-sizing: border-box; }
@@ -29,11 +29,20 @@ dt { color:var(--muted); } dd { margin:0; font-weight:600; min-width:0; overflow
 .actions input { flex:1; min-width:180px; }
 .empty, .err { padding:30px; text-align:center; color:var(--muted); background:var(--card); border-radius:20px; border:1px dashed var(--line); }
 .err { color:var(--red); }
+.sos { background:#fff1f0; border:2px solid var(--red); border-radius:20px; padding:16px; display:grid; gap:8px; }
+.sos b { color:var(--red); }
+.section-h { font-size:18px; margin:8px 0 0; letter-spacing:-.01em; }
+.rep { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:16px; display:grid; gap:8px; }
+.hold { font-size:12px; font-weight:700; padding:3px 9px; border-radius:99px; background:#f3dedd; color:var(--red); justify-self:start; }
 @media (max-width:640px) { .card { grid-template-columns:1fr; } }
 </style></head>
 <body><div class="wrap">
-  <div class="bar"><h1>Krewzo ID checks</h1>
+  <div class="bar"><h1>Krewzo ops</h1>
     <form id="keyf" style="display:flex;gap:8px"><input id="key" type="password" placeholder="Admin key" autocomplete="off"><button class="btn ghost">Use key</button></form></div>
+  <div id="sos"></div>
+  <h2 class="section-h">Problem reports</h2>
+  <div id="reports"></div>
+  <h2 class="section-h">ID checks</h2>
   <div class="bar"><div class="tabs" id="tabs"><button data-s="PENDING" class="on">To review</button><button data-s="VERIFIED">Approved</button><button data-s="REJECTED">Rejected</button></div>
     <span id="count" style="color:var(--muted)"></span></div>
   <div id="list"></div>
@@ -51,6 +60,46 @@ const api = async (path, opts = {}) => {
   if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
   return j;
 };
+const CAT = { NOT_DONE: 'Work not done', POOR_QUALITY: 'Poor quality', SAFETY: 'Safety', ASKED_EXTRA_MONEY: 'Asked for extra money', DAMAGE: 'Damage', OTHER: 'Other',
+  NOT_PAID_EXTRA_WORK: 'Extra work not paid', UNSAFE: 'Unsafe place', ABUSIVE: 'Abusive customer', WRONG_JOB: 'Job not as described' };
+async function loadSafety() {
+  const sos = document.getElementById('sos'), reps = document.getElementById('reports');
+  sos.replaceChildren(); reps.replaceChildren();
+  if (!key) return;
+  try {
+    for (const a of await api('/api/admin/sos')) {
+      const map = a.lat != null ? el('a', { href: 'https://www.google.com/maps?q=' + a.lat + ',' + a.lng, target: '_blank', rel: 'noopener', textContent: 'Open location on map' }) : el('span', { textContent: 'No location sent' });
+      sos.append(el('div', { className: 'sos' }, [
+        el('b', { textContent: 'SOS · ' + a.role + ' · ' + new Date(a.created_at).toLocaleString('en-IN') }),
+        el('div', { textContent: (a.name || '?') + ' · +91 ' + (a.phone || '?') + (a.address ? ' · ' + a.address : '') }),
+        map,
+        el('button', { className: 'btn ghost', textContent: 'Handled', onclick: async () => { await api('/api/admin/sos/' + a.id + '/handled', { method: 'POST', body: '{}' }); loadSafety(); } }),
+      ]));
+    }
+    const rows = await api('/api/admin/reports');
+    if (!rows.length) reps.append(el('div', { className: 'empty', textContent: 'No open reports.' }));
+    for (const r of rows) {
+      const note = el('input', { type: 'text', placeholder: 'Note (what you found out)' });
+      const strike = el('input', { type: 'checkbox' });
+      const act = (action) => async () => {
+        try { await api('/api/admin/reports/' + r.id + '/resolve', { method: 'POST', body: JSON.stringify({ action, note: note.value, strike: strike.checked }) }); loadSafety(); }
+        catch (e) { alert(e.message); }
+      };
+      const held = r.payment_held && r.disputed;
+      reps.append(el('div', { className: 'rep' }, [
+        el('b', { textContent: CAT[r.category] + ' · reported by ' + r.reporter_role + ' · job #' + r.booking_id + ' (' + r.booking_status + ')' }),
+        ...(held ? [el('span', { className: 'hold', textContent: 'Payment on hold: Rs ' + r.worker_payout })] : []),
+        el('div', { textContent: r.details || '(no details)' }),
+        el('div', { style: 'color:var(--muted)', textContent: 'Customer ' + r.customer_name + ' +91 ' + r.customer_phone + ' · Worker ' + (r.worker_name || '-') + (r.worker_phone ? ' +91 ' + r.worker_phone : '') + ' · ' + r.address }),
+        el('div', { className: 'actions' }, [note,
+          el('label', { style: 'display:flex;gap:6px;align-items:center' }, [strike, 'Strike worker']),
+          ...(held ? [el('button', { className: 'btn ok', textContent: 'Pay worker', onclick: act('PAY_WORKER') }), el('button', { className: 'btn no', textContent: 'Refund customer', onclick: act('REFUND') })] : []),
+          el('button', { className: 'btn ghost', textContent: 'Close', onclick: act('CLOSE') })]),
+      ]));
+    }
+  } catch (e) { reps.append(el('div', { className: 'err', textContent: e.message })); }
+}
+
 async function load() {
   const list = document.getElementById('list');
   list.replaceChildren();
@@ -84,7 +133,8 @@ function card(k) {
   }
   return el('div', { className: 'card' }, [el('div', { className: 'photos' }, [photo(k.selfie, 'Selfie'), photo(k.aadhaar_photo, 'Aadhaar photo')]), body]);
 }
-document.getElementById('keyf').onsubmit = (e) => { e.preventDefault(); key = document.getElementById('key').value.trim(); sessionStorage.setItem('krewzo.admin', key); load(); };
+document.getElementById('keyf').onsubmit = (e) => { e.preventDefault(); key = document.getElementById('key').value.trim(); sessionStorage.setItem('krewzo.admin', key); load(); loadSafety(); };
+setInterval(loadSafety, 30000); // SOS / reports refresh by themselves
 document.getElementById('resetf').onsubmit = async (e) => {
   e.preventDefault();
   const msg = document.getElementById('rmsg');
@@ -93,4 +143,5 @@ document.getElementById('resetf').onsubmit = async (e) => {
 };
 document.getElementById('tabs').onclick = (e) => { const s = e.target.dataset.s; if (!s) return; tab = s; [...e.currentTarget.children].forEach((b) => b.classList.toggle('on', b === e.target)); load(); };
 load();
+loadSafety();
 </script></body></html>`;

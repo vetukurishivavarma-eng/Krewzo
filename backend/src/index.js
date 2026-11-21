@@ -9,3 +9,6 @@ const port = Number(process.env.PORT || 4000);
 createApp().server.listen(port, () => console.log(`Krewzo backend on http://localhost:${port}`));
 startReleaseWatch();
 startSnapshots();
+const { sweep } = await import('./safety.js');
+setInterval(() => { try { sweep(); } catch (e) { console.error('sweep', e.message); } }, 60e3).unref();
+setTimeout(() => { try { sweep(); } catch {} }, 10e3).unref();

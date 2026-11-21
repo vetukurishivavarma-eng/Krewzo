@@ -204,3 +204,26 @@ const SAFETY_TEXT = {
   HI: { codes_locked: 'बहुत बार गलत कोड से कोड लॉक हो गए। ग्राहक से ऐप में नया कोड बनवाएँ।', too_early: 'FINISH कोड काम शुरू होने के 15 मिनट बाद चलेगा।', upcoming: 'आने वाले काम' },
 };
 for (const l of Object.keys(SAFETY_TEXT)) Object.assign(DICT[l], SAFETY_TEXT[l]);
+
+// Trust & safety (report, SOS, hold, customer rating, suspension).
+const TRUST_TEXT = {
+  EN: {
+    report: 'Report a problem', report_sent: 'Sent. Krewzo will call you.', send: 'Send', sos: 'SOS', call_police: 'Call 112 (police)', sos_sent: 'Krewzo team alerted with your location.',
+    held: 'Payment on hold: the customer reported a problem. Krewzo will call you.', rate_customer: 'Rate the customer', thanks: 'Thanks!',
+    suspended: 'Your account is paused until', disputed: 'Payment on hold: the customer reported a problem.',
+    R: { NOT_PAID_EXTRA_WORK: 'Asked for extra work without pay', UNSAFE: 'Unsafe place', ABUSIVE: 'Customer was abusive', WRONG_JOB: 'Job was not as described', OTHER: 'Something else' },
+  },
+  TE: {
+    report: 'సమస్య చెప్పండి', report_sent: 'పంపాం. Krewzo మీకు ఫోన్ చేస్తుంది.', send: 'పంపు', sos: 'SOS', call_police: '112 కి కాల్ (పోలీస్)', sos_sent: 'మీ లొకేషన్‌తో Krewzo కి అలర్ట్ పంపాం.',
+    held: 'డబ్బు ఆపబడింది: కస్టమర్ సమస్య చెప్పారు. Krewzo మీకు ఫోన్ చేస్తుంది.', rate_customer: 'కస్టమర్‌కి రేటింగ్ ఇవ్వండి', thanks: 'ధన్యవాదాలు!',
+    suspended: 'మీ ఖాతా ఆపబడింది, తేదీ వరకు:', disputed: 'డబ్బు ఆపబడింది: కస్టమర్ సమస్య చెప్పారు.',
+    R: { NOT_PAID_EXTRA_WORK: 'డబ్బు లేకుండా అదనపు పని అడిగారు', UNSAFE: 'సురక్షితం కాని చోటు', ABUSIVE: 'కస్టమర్ దురుసుగా ప్రవర్తించారు', WRONG_JOB: 'చెప్పిన పని వేరు', OTHER: 'ఇంకేదో' },
+  },
+  HI: {
+    report: 'समस्या बताएँ', report_sent: 'भेज दिया। Krewzo आपको कॉल करेगा।', send: 'भेजें', sos: 'SOS', call_police: '112 पर कॉल (पुलिस)', sos_sent: 'आपकी लोकेशन के साथ Krewzo को अलर्ट भेजा।',
+    held: 'पैसे रोके गए: ग्राहक ने समस्या बताई। Krewzo आपको कॉल करेगा।', rate_customer: 'ग्राहक को रेटिंग दें', thanks: 'धन्यवाद!',
+    suspended: 'आपका खाता रुका है, तारीख तक:', disputed: 'पैसे रोके गए: ग्राहक ने समस्या बताई।',
+    R: { NOT_PAID_EXTRA_WORK: 'बिना पैसे ज़्यादा काम माँगा', UNSAFE: 'असुरक्षित जगह', ABUSIVE: 'ग्राहक ने बदतमीज़ी की', WRONG_JOB: 'काम बताए जैसा नहीं था', OTHER: 'कुछ और' },
+  },
+};
+for (const l of Object.keys(TRUST_TEXT)) Object.assign(DICT[l], TRUST_TEXT[l]);

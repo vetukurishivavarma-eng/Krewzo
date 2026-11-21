@@ -121,7 +121,7 @@ test('no mobile in the QR goes to ops review; reject + block stops that Aadhaar 
 test('admin page is served', async () => {
   const r = await fetch(base + '/admin');
   assert.equal(r.status, 200);
-  assert.match(await r.text(), /Krewzo ID checks/);
+  assert.match(await r.text(), /Krewzo ops/);
 });
 
 test('ops can send an old auto-approved partner back through the ID check', async () => {

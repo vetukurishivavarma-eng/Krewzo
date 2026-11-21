@@ -70,8 +70,18 @@ test('Starter halves the fee and enforces its credit limit and team seats', asyn
   assert.equal((await call('POST', '/api/business/members', { phone: '9800000000' }, owner)).status, 404);
   assert.equal((await call('POST', '/api/business/members', { phone: '9811100002' }, owner)).status, 200);
   const two = (await call('POST', '/api/business/members', { phone: '9811100003' }, owner)).body.business;
-  assert.equal(two.seats_used, 3);
-  assert.equal((await call('POST', '/api/business/members', { phone: '9811100004' }, owner)).status, 409, 'Starter = 3 people');
+  assert.equal(two.seats_used, 3, 'pending invites hold a seat');
+  assert.equal(two.invited.length, 2);
+  // Nobody joins without saying yes
+  const a = (await call('POST', '/api/auth/customer', { phone: '9811100002', pin: '1234' })).body.token;
+  assert.equal((await call('GET', '/api/me', null, a)).body.user.business, null);
+  const inv = (await call('GET', '/api/business', null, a)).body.invites;
+  assert.equal(inv[0].business_name, 'Vijay Constructions');
+  assert.equal((await call('POST', `/api/business/invites/${inv[0].owner_id}/accept`, null, a)).body.business.role, 'MEMBER');
+  const m2 = (await call('POST', '/api/auth/customer', { phone: '9811100003', pin: '1234' })).body.token;
+  assert.equal((await call('POST', `/api/business/invites/${inv[0].owner_id}/decline`, null, m2)).body.business, null);
+  assert.equal((await call('POST', '/api/business/members', { phone: '9811100004' }, owner)).status, 200, 'the declined seat is free again');
+  assert.equal((await call('POST', '/api/business/members', { phone: '9811100003' }, owner)).status, 409, 'Starter = 3 people');
 });
 
 test('team members book on the business plan; the bill shows who booked', async () => {

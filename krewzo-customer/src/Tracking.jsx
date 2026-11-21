@@ -5,6 +5,7 @@ import { api, connectSocket, getServer, openDownload } from './lib.js';
 import HandshakeSheet from './HandshakeSheet.jsx';
 import MapPin from './MapPin.jsx';
 import TipSheet from './TipSheet.jsx';
+import { ReportSheet, SosSheet } from './Safety.jsx';
 import { STATUS } from './App.jsx';
 
 // ponytail: straight-line km x 1.4 road factor at ~18 km/h city speed. Swap for a routing API if ETAs feel off.
@@ -171,9 +172,18 @@ function Countdown({ t }) {
   );
 }
 
+const LATE_MIN = 30;
 function Ticket({ t, n, onSheet, onCancel, onRate }) {
   const w = t.worker;
   const [tip, setTip] = useState(false);
+  const [report, setReport] = useState(false);
+  const [sos, setSos] = useState(false);
+  const [msg, setMsg] = useState('');
+  // "Worker isn't coming": instant job 30 min after accept, scheduled job once its slot has started
+  const lateAt = t.status === 'ASSIGNED' ? Date.parse(t.scheduled_at || t.assigned_at) + (t.scheduled_at ? 0 : LATE_MIN * 60e3) : Infinity;
+  const late = Date.now() >= lateAt;
+  const canReport = ['ASSIGNED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED'].includes(t.status) || (t.status === 'PAID_OUT' && Date.now() - Date.parse(t.paid_out_at) < 3 * 864e5);
+  const notComing = async () => { setMsg(''); try { await api('POST', `/bookings/${t.id}/no-show`); } catch (e) { setMsg(e.message); } };
   const km = w?.lat != null ? haversineKm(w, t) : null;
   const [label, cls] = STATUS[t.status];
   return (
@@ -233,12 +243,25 @@ function Ticket({ t, n, onSheet, onCancel, onRate }) {
           </div>
         </div>
       )}
+      {t.status === 'CANCELLED' && t.cancel_reason === 'NO_WORKER' && <div className="text-sm font-semibold mb-1">No worker was free nearby, so we cancelled it.</div>}
+      {t.status === 'CANCELLED' && t.cancel_reason === 'DISPUTE' && <div className="text-sm font-semibold mb-1">Refunded after Krewzo reviewed your report.</div>}
       {t.status === 'CANCELLED' && (
         <div className="text-sm text-muted">
           {rupees(t.escrow.amount_held - (t.cancel_fee || 0))} refunded ({t.escrow.tx_ref})
           {t.cancel_fee > 0 && <div>{rupees(t.cancel_fee)} paid to {t.worker?.name || 'the worker'} for travel</div>}
         </div>
       )}
+      {t.disputed ? <div className="mt-3 rounded-xl bg-amber/15 text-[#9a5b00] text-sm font-semibold p-3">You reported a problem. The worker's payment is on hold until Krewzo checks.</div> : null}
+      {late && <button onClick={notComing} className="mt-3 w-full h-11 rounded-xl border border-danger/40 text-danger text-sm font-bold">Worker isn't coming, find another</button>}
+      {(canReport || ['ARRIVED', 'IN_PROGRESS'].includes(t.status)) && (
+        <div className="mt-3 flex gap-2">
+          {canReport && !t.disputed && <button onClick={() => setReport(true)} className="flex-1 h-10 rounded-xl text-sm font-semibold text-muted border border-line">Report a problem</button>}
+          {['ASSIGNED', 'ARRIVED', 'IN_PROGRESS'].includes(t.status) && <button onClick={() => setSos(true)} className="h-10 px-4 rounded-xl text-sm font-black text-white bg-danger">SOS</button>}
+        </div>
+      )}
+      {msg && <div className="mt-2 text-sm text-danger font-semibold">{msg}</div>}
+      {report && <ReportSheet ticket={t} onClose={() => setReport(false)} />}
+      {sos && <SosSheet bookingId={t.id} onClose={() => setSos(false)} />}
     </div>
   );
 }

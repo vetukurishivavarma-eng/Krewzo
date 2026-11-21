@@ -254,7 +254,7 @@ test('customer cancelling after accept tells the worker; a worker on the way is 
 });
 
 test('guessing start/finish codes locks them until the customer makes a new code', async () => {
-  const cust = await login('customer', '9999999999');
+  const cust = (await call('POST', '/api/auth/customer', { phone: '9777700001', pin: '1234', name: 'Lock Test' })).body.token;
   let w;
   for (const phone of ['9000000005', '9000000002', '9000000001', '9000000004']) {
     const t = await login('worker', phone);
@@ -282,7 +282,7 @@ test('guessing start/finish codes locks them until the customer makes a new code
 });
 
 test('a scheduled job does not block instant work, and clashing jobs are refused', async () => {
-  const cust = await login('customer', '9999999999');
+  const cust = (await call('POST', '/api/auth/customer', { phone: '9777700002', pin: '1234', name: 'Schedule Test' })).body.token;
   let w;
   for (const phone of ['9000000002', '9000000005', '9000000001', '9000000004']) {
     const t = await login('worker', phone);
