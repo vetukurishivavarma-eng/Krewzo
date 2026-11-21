@@ -22,6 +22,8 @@
 
 **2.0.1 (2026-11-21)**: updater keeps a finished APK (`update-<hash>.apk`, written as .part then renamed) so backing out of the installer and tapping Install again opens it instantly. Commit is LOCAL ONLY (not pushed, to avoid wiping Render test data) -- push with the next backend change.
 
+**2.0.2-2.0.3 (2026-11-21)**: offers expire server-side after OFFER_TTL_S=30 (missOffer -> SKIPPED + job:taken + job_taken push; late accept 409; test/offer-expiry.test.js). Partner 2.0.3 / customer 2.0.2: updates download via Android DownloadManager (background, notification progress, resumes after relaunch, finished file reused). Background-download commit is LOCAL ONLY (no backend change). OPEN QUESTIONS to user: client demo distribution (Play internal testing vs Firebase App Distribution), worker KYC provider (Aadhaar via DigiLocker + PAN + selfie).
+
 **Not verified yet**
 - No one has clicked through the UI in a real browser or phone. First thing next session: `npm run dev`, open :5173 + :5174 side by side and run the demo loop from the README.
 - Camera QR scan is untested on a real phone (needs HTTPS → use a cloudflared tunnel).
