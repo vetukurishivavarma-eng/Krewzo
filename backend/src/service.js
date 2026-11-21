@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import {
   ACTIVE_STATUSES, BOOKING_STATUS as S, DISPATCH_RADIUS_KM, DURATIONS, GSTIN_RE, HANDSHAKE_MAX_FAILS,
-  SKILL_TIERS, SLOTS, TRADE_TAGS, UPI_RE, canTransition, haversineKm, quotePrice,
+  SKILL_TIERS, SLOTS, TRADE_TAGS, UPI_RE, canTransition, cancelFee, haversineKm, quotePrice,
 } from '@krewzo/shared';
 import { db, now, tx } from './db.js';
 import { newHandshake, checkHandshake } from './handshake.js';
@@ -258,7 +258,7 @@ export function acceptJob(workerId, bookingId) {
   const b = tx(() => {
     const cur = getBooking(bookingId);
     if (!cur || cur.status !== S.SEARCHING) fail(409, 'Job already taken');
-    const nb = transition(cur, S.ASSIGNED, { worker_id: w.id, assigned_at: now(), start_handshake: newHandshake(cur.id, 'START'), handshake_fails: 0 });
+    const nb = transition(cur, S.ASSIGNED, { worker_id: w.id, assigned_at: now(), assigned_lat: w.lat, assigned_lng: w.lng, start_handshake: newHandshake(cur.id, 'START'), handshake_fails: 0 });
     db.prepare("UPDATE job_offers SET status = 'ACCEPTED' WHERE booking_id = ? AND worker_id = ?").run(cur.id, w.id);
     db.prepare("UPDATE job_offers SET status = 'EXPIRED' WHERE worker_id = ? AND status = 'OFFERED' AND booking_id != ?").run(w.id, cur.id);
     return nb;
@@ -347,17 +347,44 @@ function releaseEscrow(b) {
 }
 
 // ---------- customer actions ----------
+// How far the worker has come toward the customer since accepting (km). Only for a worker on the way.
+function travelledKm(b) {
+  if (b.status !== S.ASSIGNED || b.assigned_lat == null) return 0;
+  const w = getWorker(b.worker_id);
+  if (w?.lat == null) return 0;
+  const start = haversineKm({ lat: b.assigned_lat, lng: b.assigned_lng }, b);
+  return Math.max(0, start - haversineKm(w, b));
+}
+
+function ownBooking(customerId, bookingId) {
+  const b = getBooking(bookingId);
+  if (!b || b.customer_id !== customerId) fail(404, 'Booking not found');
+  return b;
+}
+
+// Shown to the customer before they confirm, so a travel fee is never a surprise.
+export function cancelQuote(customerId, bookingId) {
+  const b = ownBooking(customerId, bookingId);
+  const km = Math.round(travelledKm(b) * 10) / 10;
+  const fee = Math.min(cancelFee(km), b.escrow_total);
+  return { km, fee, refund: b.escrow_total - fee, worker_name: b.worker_id ? getWorker(b.worker_id).name : null };
+}
+
 export function cancelBooking(customerId, bookingId) {
-  const cur = getBooking(bookingId);
-  if (!cur || cur.customer_id !== customerId) fail(404, 'Booking not found');
+  const cur = ownBooking(customerId, bookingId);
+  const { fee } = cancelQuote(customerId, bookingId);
   const b = tx(() => {
-    const nb = transition(cur, S.CANCELLED, { cancelled_at: now() });
+    const nb = transition(cur, S.CANCELLED, { cancelled_at: now(), cancel_fee: fee, cancel_fee_ref: fee ? ref('PAY') : null });
     db.prepare("UPDATE escrow_ledger SET status = 'REFUNDED', tx_ref = ?, updated_at = ? WHERE booking_id = ? AND status = 'HELD'").run(ref('RFD'), now(), nb.id);
+    if (fee) db.prepare('UPDATE workers SET total_earnings = total_earnings + ? WHERE id = ?').run(fee, cur.worker_id);
     return nb;
   });
   expireOffers(b.id);
   broadcast(b);
-  if (cur.worker_id) dispatchToWorker(cur.worker_id);
+  if (cur.worker_id) {
+    pushCancelled(getWorker(cur.worker_id), b);
+    dispatchToWorker(cur.worker_id);
+  }
   return viewFor(b, 'customer');
 }
 
@@ -373,6 +400,18 @@ export function rateWorker(customerId, bookingId, stars) {
     db.prepare('UPDATE workers SET rating = ROUND((rating * (rating_count + 1) + ?) / (rating_count + 2), 2), rating_count = rating_count + 1 WHERE id = ?').run(s, b.worker_id);
   });
   return viewFor(getBooking(b.id), 'customer');
+}
+
+// The worker may already be on the way (often with Maps in front), so tell them loudly, in their language.
+const CANCEL_TEXT = {
+  EN: ["❌ Job cancelled, don't go", (n) => `${n} cancelled the booking.`, (f) => ` ₹${f} travel pay sent to your UPI.`],
+  TE: ['❌ పని రద్దు అయింది, వెళ్ళకండి', (n) => `${n} బుకింగ్ రద్దు చేశారు.`, (f) => ` ప్రయాణానికి ₹${f} మీ UPI కి పంపాం.`],
+  HI: ['❌ काम रद्द हो गया, मत जाइए', (n) => `${n} ने बुकिंग रद्द कर दी।`, (f) => ` सफ़र के ₹${f} आपके UPI पर भेजे।`],
+};
+function pushCancelled(w, b) {
+  const [title, body, paid] = CANCEL_TEXT[w.language] || CANCEL_TEXT.EN;
+  const name = (getUser(b.customer_id)?.name || 'Customer').split(' ')[0];
+  sendPush('workers', w, { title, body: body(name) + (b.cancel_fee ? paid(b.cancel_fee) : ''), channel: 'jobs', ttlSec: 3600, data: { type: 'job_cancelled', booking_id: b.id, cancel_fee: b.cancel_fee } });
 }
 
 // ---------- push tokens ----------
@@ -422,7 +461,10 @@ function istDayStart() {
 
 export function workerHome(workerId) {
   const w = getWorker(workerId);
-  const today = db.prepare("SELECT COALESCE(SUM(worker_payout),0) AS s, COUNT(*) AS n FROM bookings WHERE worker_id = ? AND status = 'PAID_OUT' AND paid_out_at >= ?").get(w.id, istDayStart());
+  const day = istDayStart();
+  const today = db.prepare(`SELECT COALESCE(SUM(CASE WHEN status = 'PAID_OUT' THEN worker_payout ELSE cancel_fee END),0) AS s,
+    COUNT(CASE WHEN status = 'PAID_OUT' THEN 1 END) AS n FROM bookings
+    WHERE worker_id = ? AND ((status = 'PAID_OUT' AND paid_out_at >= ?) OR (status = 'CANCELLED' AND cancel_fee > 0 AND cancelled_at >= ?))`).get(w.id, day, day);
   const act = activeJob(w.id);
   return { worker: publicWorker(w), today_earnings: today.s, today_shifts: today.n, active: act ? viewFor(act, 'worker') : null, offers: act ? [] : openOffers(w.id) };
 }

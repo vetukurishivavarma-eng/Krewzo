@@ -97,6 +97,7 @@ export function createApp() {
   app.post('/api/bookings', auth('customer'), (req, res) => res.status(201).json(svc.createBookings(svc.getUser(req.auth.id), req.body)));
   app.get('/api/bookings', auth('customer'), (req, res) => res.json(svc.listGroups(req.auth.id)));
   app.get('/api/groups/:gid', auth('customer'), (req, res) => res.json(svc.getGroup(req.auth.id, Number(req.params.gid))));
+  app.get('/api/bookings/:id/cancel-quote', auth('customer'), (req, res) => res.json(svc.cancelQuote(req.auth.id, Number(req.params.id))));
   app.post('/api/bookings/:id/cancel', auth('customer'), (req, res) => res.json(svc.cancelBooking(req.auth.id, Number(req.params.id))));
   app.post('/api/bookings/:id/rate', auth('customer'), (req, res) => res.json(svc.rateWorker(req.auth.id, Number(req.params.id), req.body.stars)));
   app.get('/api/groups/:gid/invoice', auth('customer'), (req, res) => res.type('html').send(invoiceHtml(svc.getGroup(req.auth.id, Number(req.params.gid)), svc.getUser(req.auth.id))));

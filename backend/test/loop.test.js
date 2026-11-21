@@ -202,3 +202,38 @@ test('customer push token is stored and never returned by the API', async () => 
   assert.equal((await call('PATCH', '/api/me', { fcm_token: null }, c)).status, 200);
   assert.equal(db.prepare("SELECT fcm_token FROM users WHERE phone = '9999999999'").get().fcm_token, null);
 });
+
+test('customer cancelling after accept tells the worker; a worker on the way is paid for the trip', async () => {
+  const cust = await login('customer', '9999999999');
+  let w, name;
+  for (const [phone, n] of [['9000000002', 'Lakshmi'], ['9000000004', 'Imran'], ['9000000005', 'Venkatesh'], ['9000000001', 'Ramu']]) {
+    const t = await login('worker', phone);
+    if (!(await call('GET', '/api/workers/me/home', null, t)).body.active) { w = t; name = n; break; } // earlier tests leave some busy
+  }
+  assert.ok(w, 'a free seeded worker');
+  const at = (lat) => call('PATCH', '/api/workers/me', { lat, lng: L.lng }, w);
+  await at(L.lat + 0.025); // ~2.8 km away when the job comes in
+  const id = (await book(cust)).body.tickets[0].id;
+  const acc = await call('POST', `/api/bookings/${id}/accept`, null, w);
+  assert.equal(acc.status, 200, JSON.stringify(acc.body));
+
+  // Not moved yet: free to cancel.
+  assert.equal((await call('GET', `/api/bookings/${id}/cancel-quote`, null, cust)).body.fee, 0);
+
+  await at(L.lat); // drove all the way
+  const q = (await call('GET', `/api/bookings/${id}/cancel-quote`, null, cust)).body;
+  assert.ok(q.km > 2.5 && q.km < 3, `travelled ${q.km} km`);
+  assert.equal(q.fee, Math.round(20 + 10 * q.km));
+  assert.equal(q.worker_name, name);
+
+  const sock = ioc(base, { auth: { token: w }, transports: ['websocket'] });
+  await new Promise((r) => sock.on('connect', r));
+  const told = new Promise((r) => sock.on('booking:update', (b) => b.id === id && b.status === 'CANCELLED' && r(b)));
+  const before = (await call('GET', '/api/workers/me/home', null, w)).body.today_earnings;
+  assert.equal((await call('POST', `/api/bookings/${id}/cancel`, null, cust)).status, 200);
+  assert.equal((await told).cancel_fee, q.fee);
+  const home = (await call('GET', '/api/workers/me/home', null, w)).body;
+  assert.equal(home.active, null); // free for new jobs
+  assert.equal(home.today_earnings, before + q.fee); // travel pay counts as today's money
+  sock.close();
+});

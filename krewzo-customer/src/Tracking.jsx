@@ -13,6 +13,7 @@ export default function Tracking({ groupId, onBack }) {
   const [g, setG] = useState(null);
   const [sheet, setSheet] = useState(null); // { id, phase }
   const [err, setErr] = useState('');
+  const [cancelQ, setCancelQ] = useState(null); // { id, fee, km, refund, worker_name }
   const prev = useRef({});
 
   useEffect(() => {
@@ -38,8 +39,14 @@ export default function Tracking({ groupId, onBack }) {
   const first = g.tickets[0];
   const open = sheet && g.tickets.find((t) => t.id === sheet.id);
 
+  // Fetch the quote first: if the worker is already on the way, the customer sees the travel fee before confirming.
   const cancel = async (id) => {
-    if (!confirm('Cancel this worker? Your escrow is refunded in full.')) return;
+    setErr('');
+    try { setCancelQ({ id, ...(await api('GET', `/bookings/${id}/cancel-quote`)) }); } catch (e) { setErr(e.message); }
+  };
+  const confirmCancel = async () => {
+    const id = cancelQ.id;
+    setCancelQ(null);
     try { await api('POST', `/bookings/${id}/cancel`); } catch (e) { setErr(e.message); }
   };
   const rate = async (id, stars) => {
@@ -72,6 +79,35 @@ export default function Tracking({ groupId, onBack }) {
       {g.tickets.map((t, i) => <Ticket key={t.id} t={t} n={g.tickets.length > 1 ? i + 1 : null} onSheet={(phase) => setSheet({ id: t.id, phase })} onCancel={() => cancel(t.id)} onRate={(s) => rate(t.id, s)} />)}
       {err && <div className="text-sm text-danger font-semibold">{err}</div>}
       {open && <HandshakeSheet ticket={open} phase={sheet.phase} onClose={() => setSheet(null)} />}
+      {cancelQ && <CancelSheet q={cancelQ} onKeep={() => setCancelQ(null)} onCancel={confirmCancel} />}
+    </div>
+  );
+}
+
+function CancelSheet({ q, onKeep, onCancel }) {
+  const first = q.worker_name?.split(' ')[0];
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm" onClick={onKeep}>
+      <div onClick={(e) => e.stopPropagation()} className="sheet w-full max-w-md rounded-t-[2rem] bg-card px-6 pt-3 pb-8">
+        <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-5" />
+        <div className="font-display text-2xl font-extrabold">Cancel this booking?</div>
+        {q.fee > 0 ? (
+          <>
+            <p className="text-muted mt-2">{first} has already travelled <b className="text-ink">{q.km} km</b> toward you. To be fair to them, a travel fee goes to {first}.</p>
+            <div className="mt-4 rounded-2xl bg-paper p-4 text-sm space-y-1.5">
+              <div className="flex justify-between"><span>Travel fee to {first}</span><span className="num font-bold">{rupees(q.fee)}</span></div>
+              <div className="flex justify-between text-forest font-bold"><span>Refunded to you</span><span className="num">{rupees(q.refund)}</span></div>
+            </div>
+          </>
+        ) : (
+          <p className="text-muted mt-2">{first ? `${first} hasn't started travelling yet, so` : 'No worker is on the way yet, so'} you get a <b className="text-forest">full refund of {rupees(q.refund)}</b>.</p>
+        )}
+        <p className="text-xs text-muted mt-3">Cancelling is free until the worker has travelled 0.5 km. After that it's ₹20 + ₹10 per km travelled (max ₹100), paid in full to the worker.</p>
+        <div className="grid grid-cols-2 gap-2 mt-5">
+          <button onClick={onKeep} className="h-12 rounded-xl bg-ink text-paper font-bold">Keep booking</button>
+          <button onClick={onCancel} className="h-12 rounded-xl border border-line font-bold text-danger">{q.fee > 0 ? `Cancel, pay ${rupees(q.fee)}` : 'Cancel booking'}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -161,7 +197,12 @@ function Ticket({ t, n, onSheet, onCancel, onRate }) {
           </div>
         </div>
       )}
-      {t.status === 'CANCELLED' && <div className="text-sm text-muted">{rupees(t.escrow.amount_held)} refunded ({t.escrow.tx_ref})</div>}
+      {t.status === 'CANCELLED' && (
+        <div className="text-sm text-muted">
+          {rupees(t.escrow.amount_held - (t.cancel_fee || 0))} refunded ({t.escrow.tx_ref})
+          {t.cancel_fee > 0 && <div>{rupees(t.cancel_fee)} paid to {t.worker?.name || 'the worker'} for travel</div>}
+        </div>
+      )}
     </div>
   );
 }

@@ -100,7 +100,7 @@ export default function Book({ user, onBooked }) {
             </label>
             <div className="flex justify-between pt-3 mt-2 border-t border-dashed border-line text-lg font-black"><span>Held in escrow</span><span className="num">{rupees(p.escrow_total)}</span></div>
           </div>
-          <div className="mt-3 rounded-2xl bg-lime/30 p-3 text-sm flex gap-2.5"><Lock size={18} className="shrink-0 mt-0.5" /><span>Your money stays locked. It's released only when you show the FINISH code. Cancel before work starts for a full refund.</span></div>
+          <div className="mt-3 rounded-2xl bg-lime/30 p-3 text-sm flex gap-2.5"><Lock size={18} className="shrink-0 mt-0.5" /><span>Your money stays locked. It's released only when you show the FINISH code. Cancel for a full refund until the worker has travelled 0.5 km; after that a small travel fee (₹20 + ₹10/km, max ₹100) goes to the worker.</span></div>
         </Section>
         <Section title="Pay with UPI">
           <input placeholder="yourname@okhdfc" value={f.upi_id} onChange={(e) => set({ upi_id: e.target.value.trim() })} className={`${field} w-full`} />

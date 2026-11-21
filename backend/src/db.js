@@ -113,7 +113,12 @@ CREATE TABLE IF NOT EXISTS job_offers (
 `);
 
 // Columns added after launch (SQLite has no ADD COLUMN IF NOT EXISTS).
-for (const sql of ['ALTER TABLE workers ADD COLUMN fcm_token TEXT', 'ALTER TABLE users ADD COLUMN fcm_token TEXT']) { try { db.exec(sql); } catch {} }
+for (const sql of [
+  'ALTER TABLE workers ADD COLUMN fcm_token TEXT', 'ALTER TABLE users ADD COLUMN fcm_token TEXT',
+  // where the worker was when they accepted, and what a late cancel paid them for the trip
+  'ALTER TABLE bookings ADD COLUMN assigned_lat REAL', 'ALTER TABLE bookings ADD COLUMN assigned_lng REAL',
+  'ALTER TABLE bookings ADD COLUMN cancel_fee INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE bookings ADD COLUMN cancel_fee_ref TEXT',
+]) { try { db.exec(sql); } catch {} }
 
 export const now = () => new Date().toISOString();
 

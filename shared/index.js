@@ -42,6 +42,14 @@ export const PLATFORM_FEE_MIN = 29;
 export const GST_PCT = 0.18; // charged on the platform fee only; worker wage is passed through untouched
 export const INSURANCE_FEE = 19;
 
+// Customer cancels after the worker has set off: the worker is paid for the trip (100% to the worker).
+// Only progress toward the customer counts, so wandering around doesn't raise it.
+export const CANCEL_FREE_KM = 0.5;
+export const CANCEL_BASE = 20;
+export const CANCEL_PER_KM = 10;
+export const CANCEL_MAX = 100;
+export const cancelFee = (km) => (km < CANCEL_FREE_KM ? 0 : Math.min(CANCEL_MAX, Math.round(CANCEL_BASE + CANCEL_PER_KM * km)));
+
 export const SLOTS = {
   MORNING: { id: 'MORNING', label: 'Morning', time: '09:00' },
   AFTERNOON: { id: 'AFTERNOON', label: 'Afternoon', time: '14:00' },

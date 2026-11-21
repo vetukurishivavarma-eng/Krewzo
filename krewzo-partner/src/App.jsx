@@ -3,7 +3,7 @@ import { BellRing, ChevronRight, Delete, Home, LifeBuoy, LogOut, MapPinOff, Powe
 import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
 import { DICT, LANGS } from './i18n.js';
 import {
-  api, getServer, setServer, isNative, setupPush, clearPush, startTrip, stopTrip, chime, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE,
+  api, getServer, setServer, isNative, setupPush, clearPush, startTrip, stopTrip, chime, errorBuzz, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE,
   syncNative, alertStatus, openOverlaySettings, openFullScreenSettings, onNativeRefresh,
 } from './lib.js';
 import JobAlert from './JobAlert.jsx';
@@ -219,6 +219,9 @@ function Main({ t, lang, setLang, onLogout }) {
   const [tab, setTab] = useState('home');
   const [geoErr, setGeoErr] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cancelled, setCancelled] = useState(null);
+  const activeRef = useRef(null);
+  activeRef.current = active;
   const langRef = useRef(lang);
   langRef.current = lang;
 
@@ -251,7 +254,13 @@ function Main({ t, lang, setLang, onLogout }) {
       speak(langRef.current, 'job', { ...o, hours: parseInt(o.duration) });
     });
     s.on('job:taken', ({ booking_id }) => setOffers((list) => list.filter((x) => x.booking_id !== booking_id)));
-    s.on('booking:update', (b) => setActive((a) => (b.status === 'SEARCHING' || b.status === 'CANCELLED' ? (a?.id === b.id ? null : a) : a?.id === b.id || !a ? b : a)));
+    s.on('booking:update', (b) => {
+      if (b.status === 'CANCELLED' && activeRef.current?.id === b.id) { // customer cancelled while we were on it: say so loudly
+        setCancelled(b); errorBuzz(); vibrate([400, 150, 400]); speak(langRef.current, 'cancelled', b.cancel_fee);
+        loadRef.current();
+      }
+      setActive((a) => (b.status === 'SEARCHING' || b.status === 'CANCELLED' ? (a?.id === b.id ? null : a) : a?.id === b.id || !a ? b : a));
+    });
     return () => s.close();
   }, [load]);
 
@@ -311,6 +320,26 @@ function Main({ t, lang, setLang, onLogout }) {
       {tab === 'earnings' && <Passbook t={t} />}
       {tab === 'profile' && <Profile t={t} w={w} lang={lang} setLang={setLang} onLogout={onLogout} />}
       <NavBar t={t} tab={tab} setTab={setTab} badge={!!active} />
+      {cancelled && <CancelledCard t={t} job={cancelled} onClose={() => setCancelled(null)} />}
+    </div>
+  );
+}
+
+function CancelledCard({ t, job, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-ink/80 backdrop-blur flex items-center justify-center p-5" onClick={onClose}>
+      <div className="drop w-full rounded-[2rem] bg-surface border border-danger/40 p-6 text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto w-16 h-16 rounded-full bg-danger/15 text-danger text-3xl flex items-center justify-center">✕</div>
+        <div className="font-display text-2xl font-extrabold mt-4">{t.cancelled_title}</div>
+        <div className="text-muted mt-1">{t.cancelled_body}</div>
+        {job.cancel_fee > 0 && (
+          <div className="mt-5 rounded-2xl bg-mint/10 border border-mint/30 p-4">
+            <div className="text-sm font-bold text-muted">{t.travel_paid}</div>
+            <div className="num text-4xl font-bold text-mint">{rupees(job.cancel_fee)}</div>
+          </div>
+        )}
+        <button onClick={onClose} className="mt-5 w-full h-14 rounded-2xl bg-lime text-ink text-lg font-black">{t.done}</button>
+      </div>
     </div>
   );
 }
