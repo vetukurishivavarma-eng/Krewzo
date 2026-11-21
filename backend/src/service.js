@@ -51,7 +51,9 @@ export function viewFor(b, role) {
   if (!b) return null;
   const out = { ...b, escrow: getEscrow(b.id) };
   const w = b.worker_id ? getWorker(b.worker_id) : null;
-  out.worker = w && { id: w.id, name: w.name, phone: w.phone, photo_url: w.photo_url, rating: w.rating, kyc_verified: w.kyc_verified, skill_tier: w.skill_tier, lat: w.lat, lng: w.lng };
+  out.worker = w && { id: w.id, name: w.name, phone: w.phone, photo_url: w.photo_url, rating: w.rating, kyc_verified: w.kyc_verified, skill_tier: w.skill_tier, lat: w.lat, lng: w.lng,
+    // UPI only after the job is paid out (for tips): wages must go through escrow, never direct.
+    ...(b.status === S.PAID_OUT && { upi_id: w.upi_id }) };
   if (role === 'worker') {
     delete out.start_handshake; delete out.end_handshake;
     const c = getUser(b.customer_id);

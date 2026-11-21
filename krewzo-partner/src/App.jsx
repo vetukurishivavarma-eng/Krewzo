@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BellRing, ChevronRight, Delete, Home, LifeBuoy, LogOut, MapPinOff, Power, ShieldAlert, Star, User, Wallet } from 'lucide-react';
-import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
+import { SKILL_TIERS, TRADE_TAGS, rupees, upiLink } from '@krewzo/shared';
+import QRCode from 'qrcode';
 import { DICT, LANGS } from './i18n.js';
 import {
   api, getServer, setServer, isNative, setupPush, clearPush, startTrip, stopTrip, chime, errorBuzz, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE,
@@ -469,6 +470,23 @@ function AlertsSetup({ t, always }) {
   );
 }
 
+// The worker's own UPI QR: anyone can scan it with GPay / PhonePe / Paytm to pay or tip them directly.
+function MyUpiQr({ t, w }) {
+  const [img, setImg] = useState('');
+  const link = upiLink({ upi_id: w.upi_id, name: w.name });
+  useEffect(() => { if (link) QRCode.toDataURL(link, { width: 480, margin: 1, errorCorrectionLevel: 'M' }).then(setImg); }, [link]);
+  if (!link) return null;
+  return (
+    <div className="rounded-3xl bg-surface border border-line p-4">
+      <div className="font-bold">{t.my_qr}</div>
+      <div className="text-sm text-muted">{t.my_qr_sub}</div>
+      <div className="mt-4 mx-auto w-56 rounded-2xl bg-white p-3">{img && <img src={img} alt={t.my_qr} className="w-full" />}</div>
+      <div className="text-center mt-3 font-black">{w.name}</div>
+      <div className="text-center text-sm text-muted select-all">{w.upi_id}</div>
+    </div>
+  );
+}
+
 function Profile({ t, w, lang, setLang, onLogout }) {
   return (
     <div className="p-5 flex flex-col gap-4">
@@ -485,8 +503,9 @@ function Profile({ t, w, lang, setLang, onLogout }) {
         <div className="flex flex-wrap gap-2">
           {w.trade_tags.map((k) => <span key={k} className="rounded-full bg-raise border border-line px-3 py-1.5 text-sm font-bold">{TRADE_TAGS[k]?.icon} {t.TRADES[k]}</span>)}
         </div>
-        {w.upi_id && <div className="text-sm text-muted mt-4">UPI · <span className="text-cream font-bold">{w.upi_id}</span></div>}
+
       </div>
+      <MyUpiQr t={t} w={w} />
       <div className="rounded-3xl bg-surface border border-line p-4 flex items-center justify-between">
         <div className="font-bold">{t.language}</div>
         <LangPill lang={lang} setLang={setLang} />

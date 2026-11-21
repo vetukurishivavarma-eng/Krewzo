@@ -180,3 +180,11 @@ const KYC = {
   },
 };
 for (const l of Object.keys(KYC)) Object.assign(DICT[l], KYC[l]);
+
+// Worker's own UPI QR (Profile).
+const QR_TEXT = {
+  EN: { my_qr: 'My UPI QR', my_qr_sub: 'Show this to get paid or tipped straight to your UPI.' },
+  TE: { my_qr: 'నా UPI QR', my_qr_sub: 'దీన్ని చూపిస్తే డబ్బు లేదా టిప్ నేరుగా మీ UPI కి వస్తుంది.' },
+  HI: { my_qr: 'मेरा UPI QR', my_qr_sub: 'इसे दिखाएँ, पैसे या टिप सीधे आपके UPI में आएँगे।' },
+};
+for (const l of Object.keys(QR_TEXT)) Object.assign(DICT[l], QR_TEXT[l]);

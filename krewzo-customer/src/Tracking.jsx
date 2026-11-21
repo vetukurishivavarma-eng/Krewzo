@@ -4,6 +4,7 @@ import { SKILL_TIERS, TRADE_TAGS, haversineKm, rupees } from '@krewzo/shared';
 import { api, connectSocket, getServer, getToken } from './lib.js';
 import HandshakeSheet from './HandshakeSheet.jsx';
 import MapPin from './MapPin.jsx';
+import TipSheet from './TipSheet.jsx';
 import { STATUS } from './App.jsx';
 
 // ponytail: straight-line km x 1.4 road factor at ~18 km/h city speed. Swap for a routing API if ETAs feel off.
@@ -140,6 +141,7 @@ function Countdown({ t }) {
 
 function Ticket({ t, n, onSheet, onCancel, onRate }) {
   const w = t.worker;
+  const [tip, setTip] = useState(false);
   const km = w?.lat != null ? haversineKm(w, t) : null;
   const [label, cls] = STATUS[t.status];
   return (
@@ -187,6 +189,8 @@ function Ticket({ t, n, onSheet, onCancel, onRate }) {
       {t.status === 'PAID_OUT' && (
         <div className="mt-4">
           <button onClick={() => onSheet('END')} className="w-full text-left rounded-2xl bg-paper p-3 text-sm"><b className="num">{rupees(t.escrow.worker_payout)}</b> released to worker · <span className="font-mono text-xs text-muted">{t.escrow.tx_ref}</span></button>
+          {w?.upi_id && <button onClick={() => setTip(true)} className="mt-3 w-full h-12 rounded-xl bg-lime text-ink font-black">💚 Tip {w.name.split(' ')[0]}</button>}
+          {tip && <TipSheet worker={w} onClose={() => setTip(false)} />}
           <div className="text-center text-xs font-bold text-muted mt-3">{t.customer_rating ? 'Thanks for rating' : 'Rate your worker'}</div>
           <div className="flex justify-center gap-1 mt-1">
             {[1, 2, 3, 4, 5].map((s) => (

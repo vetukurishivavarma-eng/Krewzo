@@ -89,6 +89,17 @@ export const ESCROW_STATUS = { HELD: 'HELD', RELEASED_UPI: 'RELEASED_UPI', REFUN
 export const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 export const UPI_RE = /^[\w.-]{2,}@[a-zA-Z]{2,}$/;
 
+// Standard UPI payment link (NPCI deep-link format); any UPI app scans it as a QR or opens it directly.
+export function upiLink({ upi_id, name, amount, note }) {
+  if (!UPI_RE.test(upi_id || '')) return null;
+  const enc = encodeURIComponent;
+  // pa keeps a literal "@" (already validated to safe characters): some UPI apps don't decode %40.
+  let link = `upi://pay?pa=${upi_id}&pn=${enc(String(name || '').slice(0, 40))}&cu=INR`;
+  if (amount) link += `&am=${Number(amount).toFixed(2)}`;
+  if (note) link += `&tn=${enc(String(note).slice(0, 50))}`;
+  return link;
+}
+
 // Krewzo Business subscription. Prices are per 30 days, before 18% GST.
 export const BUSINESS_PLANS = {
   STARTER: { id: 'STARTER', name: 'Business Starter', price: 999, fee_off: 0.5, credit: 25000, seats: 3, radius_km: 3 },

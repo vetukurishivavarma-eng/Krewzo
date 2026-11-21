@@ -64,6 +64,7 @@ test('book -> accept -> start -> end -> paid out', async () => {
   assert.equal(wv.start_handshake, undefined);
   let cv = (await call('GET', `/api/groups/${g.body.id}`, null, cust)).body.tickets[0];
   assert.equal(cv.status, 'ASSIGNED');
+  assert.equal(cv.worker.upi_id, undefined, 'no direct UPI before the job is paid out');
   const start = cv.start_handshake;
 
   // Wrong colour pin, then correct one (arrival is implied by verifying at the door).
@@ -88,6 +89,9 @@ test('book -> accept -> start -> end -> paid out', async () => {
   assert.equal(pb.shifts.length, 1);
   assert.equal(pb.shifts[0].end_method, 'QR');
   assert.equal((await call('POST', `/api/bookings/${id}/rate`, { stars: 5 }, cust)).status, 200);
+  // After payout the customer can tip the worker straight to UPI.
+  const after = (await call('GET', `/api/groups/${g.body.id}`, null, cust)).body.tickets[0];
+  assert.match(after.worker.upi_id, /@/);
 });
 
 test('five wrong codes rotate the handshake', async () => {
