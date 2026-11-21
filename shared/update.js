@@ -22,7 +22,12 @@ export async function checkForUpdate(app, current) {
   } catch { return null; } // offline / rate-limited: try again next launch
 }
 
-export async function installUpdate(url, onProgress) {
+// Downloads in the background (Android DownloadManager, keeps going if the app is left or closed),
+// then opens the installer. Calling it again joins a running download or reuses the finished file.
+export async function installUpdate(url, onProgress, title) {
   const sub = await Updater.addListener('progress', (e) => onProgress?.(e.pct));
-  try { await Updater.install({ url }); } finally { sub.remove(); }
+  try { await Updater.install({ url, title }); } finally { sub.remove(); }
 }
+
+// { status: 'NONE' | 'RUNNING' | 'DONE' | 'FAILED', pct }
+export const updateStatus = (url) => Updater.status({ url }).catch(() => ({ status: 'NONE', pct: 0 }));
