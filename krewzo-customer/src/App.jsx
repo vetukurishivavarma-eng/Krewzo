@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, ClipboardList, LifeBuoy, LogOut, Plus, User } from 'lucide-react';
+import { Briefcase, ChevronRight, ClipboardList, LifeBuoy, LogOut, Plus, User } from 'lucide-react';
 import { TRADE_TAGS, rupees } from '@krewzo/shared';
 import { api, clearPush, getServer, getToken, setServer, setToken, setupPush } from './lib.js';
 import Book from './Book.jsx';
 import Tracking from './Tracking.jsx';
+import Business from './Business.jsx';
 
 const HELPLINE = import.meta.env.VITE_HELPLINE || '18001234567';
 
@@ -27,14 +28,16 @@ export default function App() {
   if (!user) return <div className="h-full flex items-center justify-center"><Wordmark size="text-4xl" /></div>;
 
   const logout = () => { clearPush(); setToken(null); setTok(null); setUser(null); };
+  const refreshUser = () => api('GET', '/me').then((r) => setUser(r.user)).catch(() => {});
   const go = (id) => { setTab(id); setTrackId(null); };
   return (
     <div className="min-h-full max-w-md mx-auto pb-24">
       {trackId ? <Tracking groupId={trackId} onBack={() => setTrackId(null)} />
         : tab === 'book' ? <Book user={user} onBooked={(g) => { setUser((u) => ({ ...u, account_type: g.account_type })); setTab('list'); setTrackId(g.id); }} />
         : tab === 'list' ? <BookingList onOpen={setTrackId} onBook={() => go('book')} />
-        : <Account user={user} onLogout={logout} />}
-      <NavBar tab={tab} go={go} />
+        : tab === 'business' ? <Business user={user} onBack={() => go('account')} onChanged={refreshUser} />
+        : <Account user={user} onLogout={logout} onBusiness={() => go('business')} />}
+      <NavBar tab={tab === 'business' ? 'account' : tab} go={go} />
     </div>
   );
 }
@@ -155,7 +158,8 @@ function BookingList({ onOpen, onBook }) {
   );
 }
 
-function Account({ user, onLogout }) {
+function Account({ user, onLogout, onBusiness }) {
+  const b = user.business;
   return (
     <>
       <PageHead title="Account" />
@@ -165,9 +169,17 @@ function Account({ user, onLogout }) {
           <div className="min-w-0">
             <div className="font-display text-2xl font-extrabold truncate">{user.name}</div>
             <div className="text-paper/60">+91 {user.phone}</div>
-            <div className="text-xs font-bold mt-1 text-lime">{user.account_type === 'BUSINESS' ? `🏢 ${user.business_name || 'Business'} · GST` : '🏠 Personal'}</div>
+            <div className="text-xs font-bold mt-1 text-lime">{b ? `🏢 ${b.business_name} · ${b.plan_name}` : user.account_type === 'BUSINESS' ? `🏢 ${user.business_name || 'Business'} · GST` : '🏠 Personal'}</div>
           </div>
         </div>
+        <button onClick={onBusiness} className="text-left rounded-3xl bg-card border border-line p-4 flex items-center gap-3">
+          <span className="w-11 h-11 rounded-2xl bg-lime flex items-center justify-center shrink-0"><Briefcase size={20} /></span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-bold">Krewzo Business</span>
+            <span className="block text-sm text-muted truncate">{b ? `${b.plan_name}${b.role === 'MEMBER' ? ` · ${b.business_name} team` : ''}` : 'Lower fees, monthly billing, team logins'}</span>
+          </span>
+          {b ? <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-forest/15 text-forest">ACTIVE</span> : <ChevronRight className="text-muted" />}
+        </button>
         {user.addresses?.length > 0 && (
           <div className="rounded-3xl bg-card border border-line p-4">
             <div className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Saved places</div>

@@ -89,7 +89,15 @@ export const ESCROW_STATUS = { HELD: 'HELD', RELEASED_UPI: 'RELEASED_UPI', REFUN
 export const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 export const UPI_RE = /^[\w.-]{2,}@[a-zA-Z]{2,}$/;
 
-export function quotePrice({ skill_tier, duration, worker_count = 1, addons = [], insurance = false }) {
+// Krewzo Business subscription. Prices are per 30 days, before 18% GST.
+export const BUSINESS_PLANS = {
+  STARTER: { id: 'STARTER', name: 'Business Starter', price: 999, fee_off: 0.5, credit: 25000, seats: 3, radius_km: 3 },
+  PRO: { id: 'PRO', name: 'Business Pro', price: 2499, fee_off: 1, credit: 100000, seats: 10, radius_km: 5 },
+};
+export const PLAN_DAYS = 30;
+
+// fee_discount: 0..1 off the platform fee (Business plans). Worker wages are never discounted.
+export function quotePrice({ skill_tier, duration, worker_count = 1, addons = [], insurance = false, fee_discount = 0 }) {
   const tier = SKILL_TIERS[skill_tier];
   const dur = DURATIONS[duration];
   if (!tier) throw new Error('Invalid skill tier');
@@ -100,7 +108,8 @@ export function quotePrice({ skill_tier, duration, worker_count = 1, addons = []
 
   const base_wage = (tier.rate2h * dur.hours) / 2;
   const addons_total = uniq.reduce((s, a) => s + ADDONS[a].price, 0);
-  const platform_fee = Math.max(PLATFORM_FEE_MIN, Math.round(base_wage * PLATFORM_FEE_PCT));
+  const off = Math.min(1, Math.max(0, Number(fee_discount) || 0));
+  const platform_fee = Math.round(Math.max(PLATFORM_FEE_MIN, Math.round(base_wage * PLATFORM_FEE_PCT)) * (1 - off));
   const gst_amount = Math.round(platform_fee * GST_PCT);
   const insurance_fee = insurance ? INSURANCE_FEE : 0;
   const worker_payout = base_wage + addons_total;

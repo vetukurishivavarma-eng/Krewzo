@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Briefcase, Calendar, Crosshair, Home as HomeIcon, Lock, Minus, Plus, ShieldCheck, Zap } from 'lucide-react';
+import { ArrowLeft, Briefcase, Calendar, Crosshair, Home as HomeIcon, Lock, Minus, Plus, Receipt, ShieldCheck, Wallet, Zap } from 'lucide-react';
 import {
   ADDONS, DEFAULT_LOCATION, DURATIONS, GSTIN_RE, INSURANCE_FEE, MAX_WORKERS, SKILL_TIERS, SLOTS, TRADE_TAGS, UPI_RE,
   quotePrice, rupees, tradesForTier,
@@ -43,7 +43,10 @@ export default function Book({ user, onBooked }) {
   const [paying, setPaying] = useState(false);
   const [locating, setLocating] = useState(false);
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
-  const q = useMemo(() => quotePrice({ ...f }), [f.skill_tier, f.duration, f.worker_count, f.addons, f.insurance]); // eslint-disable-line
+  const biz = user.business; // Krewzo Business plan (own or the team's): fee discount + monthly billing
+  const [payMode, setPayMode] = useState(biz ? 'MONTHLY' : 'UPI');
+  const q = useMemo(() => quotePrice({ ...f, fee_discount: biz?.fee_off || 0 }), [f.skill_tier, f.duration, f.worker_count, f.addons, f.insurance, biz?.fee_off]); // eslint-disable-line
+  const fullFee = useMemo(() => quotePrice({ ...f }).total.platform_fee, [f.skill_tier, f.duration, f.worker_count]); // eslint-disable-line
 
   function gps() {
     if (!navigator.geolocation) return setErr('Location not available on this device');
@@ -61,10 +64,10 @@ export default function Book({ user, onBooked }) {
 
   async function pay() {
     setErr('');
-    if (!UPI_RE.test(f.upi_id)) return setErr('Enter your UPI ID, e.g. name@okhdfc');
-    if (f.account_type === 'BUSINESS' && !GSTIN_RE.test(f.gstin.toUpperCase())) return setErr('GSTIN must be 15 characters, e.g. 36ABCDE1234F1Z5');
+    if (payMode === 'UPI' && !UPI_RE.test(f.upi_id)) return setErr('Enter your UPI ID, e.g. name@okhdfc');
+    if (!biz && f.account_type === 'BUSINESS' && !GSTIN_RE.test(f.gstin.toUpperCase())) return setErr('GSTIN must be 15 characters, e.g. 36ABCDE1234F1Z5');
     setPaying(true);
-    try { onBooked(await api('POST', '/bookings', f)); }
+    try { onBooked(await api('POST', '/bookings', { ...f, pay_mode: payMode })); }
     catch (e) { setErr(e.message); setPaying(false); }
   }
 
@@ -77,6 +80,15 @@ export default function Book({ user, onBooked }) {
       <div className="pb-40">
         <PageHead title="Checkout" sub={`${TRADE_TAGS[f.trade_tag].label} · ${f.worker_count} × ${f.duration}`}
           right={<button onClick={() => setStep('book')} className="w-11 h-11 rounded-full bg-card border border-line flex items-center justify-center" aria-label="Back"><ArrowLeft size={20} /></button>} />
+        {biz ? (
+          <Section title="Billing">
+            <div className="rounded-3xl bg-ink text-paper p-4">
+              <div className="flex items-center gap-2 text-xs font-bold text-lime"><Briefcase size={14} /> {biz.plan_name.toUpperCase()}</div>
+              <div className="font-bold mt-1">{biz.business_name}</div>
+              <div className="text-paper/60 text-sm">GSTIN {biz.gstin} · on your monthly GST invoice</div>
+            </div>
+          </Section>
+        ) : (
         <Section title="Billing">
           <Segment value={f.account_type} onChange={(a) => set({ account_type: a })} options={[['PERSONAL', HomeIcon, 'Personal'], ['BUSINESS', Briefcase, 'Business (GST)']]} />
           {f.account_type === 'BUSINESS' && (
@@ -87,12 +99,16 @@ export default function Book({ user, onBooked }) {
             </div>
           )}
         </Section>
+        )}
         <Section title="Price breakdown">
           <div className="rounded-3xl bg-card border border-line p-4 text-sm">
             {row(`Worker wage · ${f.worker_count} × ${f.duration}`, p.base_wage, 'font-bold')}
             <div className="text-xs text-forest font-semibold -mt-1 mb-1">100% goes to the worker</div>
             {p.addons_total > 0 && row('Tool add-ons (to worker)', p.addons_total)}
-            {row('Platform fee', p.platform_fee)}
+            {biz ? (
+              <div className="flex justify-between py-1.5"><span>Platform fee <span className="text-forest font-semibold">({biz.fee_off === 1 ? 'waived' : `${Math.round(biz.fee_off * 100)}% off`} on {biz.plan_name})</span></span>
+                <span className="num"><s className="text-muted mr-1.5">{rupees(fullFee)}</s>{rupees(p.platform_fee)}</span></div>
+            ) : row('Platform fee', p.platform_fee)}
             {row('GST 18% on platform fee', p.gst_amount)}
             <label className="flex justify-between py-1.5 items-center">
               <span className="flex items-center gap-2"><input type="checkbox" checked={f.insurance} onChange={(e) => set({ insurance: e.target.checked })} className="w-4 h-4 accent-ink" /> Shift insurance ({rupees(INSURANCE_FEE)}/worker)</span>
@@ -102,13 +118,16 @@ export default function Book({ user, onBooked }) {
           </div>
           <div className="mt-3 rounded-2xl bg-lime/30 p-3 text-sm flex gap-2.5"><Lock size={18} className="shrink-0 mt-0.5" /><span>Your money stays locked. It's released only when you show the FINISH code. Cancel for a full refund until the worker has travelled 0.5 km; after that a small travel fee (₹20 + ₹10/km, max ₹100) goes to the worker.</span></div>
         </Section>
-        <Section title="Pay with UPI">
-          <input placeholder="yourname@okhdfc" value={f.upi_id} onChange={(e) => set({ upi_id: e.target.value.trim() })} className={`${field} w-full`} />
+        <Section title="Pay with">
+          {biz && <Segment value={payMode} onChange={setPayMode} options={[['MONTHLY', Receipt, 'Monthly bill'], ['UPI', Wallet, 'UPI now']]} />}
+          {payMode === 'UPI'
+            ? <input placeholder="yourname@okhdfc" value={f.upi_id} onChange={(e) => set({ upi_id: e.target.value.trim() })} className={`${field} w-full ${biz ? 'mt-2' : ''}`} />
+            : <p className="text-sm text-muted mt-2">Added to the {biz.business_name} bill for this month. Pay once, by the 7th of next month.</p>}
         </Section>
         {err && <div className="px-4 text-sm text-danger font-semibold">{err}</div>}
         <div className={bar}>
           <button disabled={paying} onClick={pay} className="w-full h-14 rounded-2xl bg-ink text-paper text-lg font-bold disabled:opacity-60 flex items-center justify-center gap-2">
-            <ShieldCheck size={20} className="text-lime" />{paying ? 'Confirming UPI…' : `Pay ${rupees(p.escrow_total)} to escrow`}
+            <ShieldCheck size={20} className="text-lime" />{paying ? (payMode === 'MONTHLY' ? 'Booking…' : 'Confirming UPI…') : payMode === 'MONTHLY' ? `Book · ${rupees(p.escrow_total)} on monthly bill` : `Pay ${rupees(p.escrow_total)} to escrow`}
           </button>
         </div>
       </div>

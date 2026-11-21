@@ -126,6 +126,21 @@ CREATE TABLE IF NOT EXISTS kyc_submissions (
   submitted_at TEXT NOT NULL, reviewed_at TEXT, note TEXT
 );
 CREATE INDEX IF NOT EXISTS kyc_identity ON kyc_submissions(identity_hash);
+CREATE TABLE IF NOT EXISTS subscriptions (
+  owner_id INTEGER PRIMARY KEY REFERENCES users(id),
+  plan TEXT NOT NULL CHECK (plan IN ('STARTER','PRO')),
+  status TEXT NOT NULL CHECK (status IN ('ACTIVE','CANCELLED','EXPIRED')), -- CANCELLED = runs until renews_at, then EXPIRED
+  business_name TEXT NOT NULL, gstin TEXT NOT NULL, payer_upi TEXT NOT NULL,
+  started_at TEXT NOT NULL, renews_at TEXT NOT NULL, cancelled_at TEXT
+);
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL REFERENCES users(id), plan TEXT NOT NULL,
+  amount INTEGER NOT NULL, gst_amount INTEGER NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL, tx_ref TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS monthly_bills (
+  owner_id INTEGER NOT NULL REFERENCES users(id), month TEXT NOT NULL, amount INTEGER NOT NULL, tx_ref TEXT NOT NULL, paid_at TEXT NOT NULL,
+  PRIMARY KEY (owner_id, month)
+);
 CREATE TABLE IF NOT EXISTS kyc_blocklist (identity_hash TEXT PRIMARY KEY, reason TEXT, created_at TEXT NOT NULL);
 `);
 
@@ -135,6 +150,9 @@ for (const sql of [
   // where the worker was when they accepted, and what a late cancel paid them for the trip
   'ALTER TABLE bookings ADD COLUMN assigned_lat REAL', 'ALTER TABLE bookings ADD COLUMN assigned_lng REAL',
   'ALTER TABLE bookings ADD COLUMN cancel_fee INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE bookings ADD COLUMN cancel_fee_ref TEXT',
+  // Krewzo Business: team members book on the owner's plan; MONTHLY groups go on the owner's monthly bill
+  'ALTER TABLE users ADD COLUMN business_owner_id INTEGER', 'ALTER TABLE bookings ADD COLUMN dispatch_km REAL',
+  "ALTER TABLE booking_groups ADD COLUMN pay_mode TEXT NOT NULL DEFAULT 'UPI'", 'ALTER TABLE booking_groups ADD COLUMN billed_to INTEGER',
 ]) { try { db.exec(sql); } catch {} }
 
 export const now = () => new Date().toISOString();

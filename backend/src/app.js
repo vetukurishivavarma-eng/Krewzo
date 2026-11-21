@@ -10,6 +10,7 @@ import { extractMessages, handleMessage, notifyWhatsApp, sendWhatsApp } from './
 import { seedIfEmpty } from './seed.js';
 import { announceNewReleases } from './releases.js';
 import * as kyc from './kyc.js';
+import * as biz from './business.js';
 import { ADMIN_PAGE } from './admin-page.js';
 
 // Wrong-PIN lockout: 5 misses locks that phone+role for 15 min (a 4-digit PIN is only 10,000 guesses).
@@ -93,7 +94,7 @@ export function createApp() {
   });
 
   app.get('/api/me', auth(), (req, res) => {
-    res.json(req.auth.role === 'customer' ? { user: svc.publicUser(svc.getUser(req.auth.id)) } : { worker: svc.publicWorker(svc.getWorker(req.auth.id)) });
+    res.json(req.auth.role === 'customer' ? { user: { ...svc.publicUser(svc.getUser(req.auth.id)), business: biz.overview(req.auth.id).business } } : { worker: svc.publicWorker(svc.getWorker(req.auth.id)) });
   });
 
   // ---------- customer ----------
@@ -130,6 +131,23 @@ export function createApp() {
   // The release script calls this after publishing: push "new version ready" to every phone. Public on purpose:
   // it only re-reads GitHub releases (throttled), so calling it can't do anything but announce a real release.
   app.post('/api/releases/check', async (req, res) => res.json({ sent: await announceNewReleases() }));
+
+  // ---------- Krewzo Business subscription ----------
+  const C = auth('customer');
+  app.get('/api/business', C, (req, res) => res.json(biz.overview(req.auth.id)));
+  app.post('/api/business/subscribe', C, (req, res) => res.json(biz.subscribe(req.auth.id, req.body || {})));
+  app.post('/api/business/plan', C, (req, res) => res.json(biz.changePlan(req.auth.id, req.body?.plan)));
+  app.post('/api/business/cancel', C, (req, res) => res.json(biz.cancel(req.auth.id)));
+  app.post('/api/business/resume', C, (req, res) => res.json(biz.resume(req.auth.id)));
+  app.post('/api/business/members', C, (req, res) => res.json(biz.addMember(req.auth.id, req.body?.phone)));
+  app.delete('/api/business/members/:id', C, (req, res) => res.json(biz.removeMember(req.auth.id, Number(req.params.id))));
+  app.get('/api/business/statement', C, (req, res) => res.json(biz.statement(req.auth.id, req.query.month || undefined)));
+  app.post('/api/business/statement/pay', C, (req, res) => res.json(biz.payBill(req.auth.id, req.body?.month)));
+  app.get('/api/business/attendance.csv', C, (req, res) => {
+    const month = req.query.month || biz.istMonth();
+    res.set('content-disposition', `attachment; filename="krewzo-attendance-${month}.csv"`).type('text/csv').send(biz.attendanceCsv(req.auth.id, month));
+  });
+  app.get('/api/business/invoice', C, (req, res) => res.type('html').send(monthlyInvoiceHtml(biz.statement(req.auth.id, req.query.month || undefined))));
 
   // ---------- worker ID check (Aadhaar Secure QR + selfie) ----------
   app.get('/api/workers/me/kyc', W, (req, res) => res.json(kyc.kycStatus(req.auth.id)));
@@ -203,6 +221,27 @@ export function createApp() {
   });
 
   return { app, server, io };
+}
+
+// One GST tax invoice per month for a Business plan: Krewzo's fees are the taxable supply; wages are pass-through.
+function monthlyInvoiceHtml(st) {
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const r = (n) => '&#8377;' + Number(n).toLocaleString('en-IN');
+  const T = st.totals;
+  const rows = st.rows.filter((x) => x.pay_mode === 'MONTHLY').map((x) => `<tr><td>${esc(x.date.slice(0, 10))}</td><td>${esc(x.task)} &middot; ${esc(x.duration)}</td><td>${esc(x.worker || '-')}</td><td>${esc(x.booked_by)}</td><td>${esc(x.status)}</td><td class="n">${r(x.total)}</td></tr>`).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Krewzo invoice ${esc(st.month)}</title>
+<style>body{font:14px/1.5 system-ui,sans-serif;color:#15130f;max-width:820px;margin:0 auto;padding:24px 16px}h1{margin:0 0 4px;font-size:24px}.m{color:#6f6a62}table{width:100%;border-collapse:collapse;margin-top:16px}td,th{padding:7px 6px;border-bottom:1px solid #e6dfd4;text-align:left;vertical-align:top}.n{text-align:right;white-space:nowrap}th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6f6a62}.tot td{font-weight:700;border-top:2px solid #15130f}.box{display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;margin-top:16px}.wrap{overflow-x:auto}</style></head><body>
+<h1>Tax invoice &middot; ${esc(st.month)}</h1><div class="m">Krewzo &middot; ${esc(st.plan)} &middot; ${st.paid ? `Paid ${esc(st.paid.paid_at.slice(0, 10))} (ref ${esc(st.paid.tx_ref)})` : 'Not paid yet'}</div>
+<div class="box"><div><b>Billed to</b><br>${esc(st.business_name)}<br>GSTIN ${esc(st.gstin)}</div><div><b>Invoice no.</b><br>KRZ-${esc(st.month.replace('-', ''))}-${esc(st.gstin.slice(-5))}</div></div>
+<table><tr><th>Item</th><th class="n">Amount</th></tr>
+<tr><td>Platform fees (SAC 998519)</td><td class="n">${r(T.platform_fee)}</td></tr>
+<tr><td>GST 18% on platform fees</td><td class="n">${r(T.gst)}</td></tr>
+<tr><td>Shift insurance</td><td class="n">${r(T.insurance)}</td></tr>
+<tr><td>Worker wages and tool add-ons (pass-through, paid to workers)</td><td class="n">${r(T.wages)}</td></tr>
+${T.travel_fee ? `<tr><td>Travel fees for late cancellations (paid to workers)</td><td class="n">${r(T.travel_fee)}</td></tr>` : ''}
+<tr class="tot"><td>Total for the month</td><td class="n">${r(T.due)}</td></tr></table>
+<h2 style="font-size:16px;margin-top:28px">Jobs on this bill</h2><div class="wrap"><table><tr><th>Date</th><th>Job</th><th>Worker</th><th>Booked by</th><th>Status</th><th class="n">Amount</th></tr>${rows || '<tr><td colspan="6" class="m">No jobs on monthly billing this month.</td></tr>'}</table></div>
+</body></html>`;
 }
 
 function invoiceHtml(g, user) {

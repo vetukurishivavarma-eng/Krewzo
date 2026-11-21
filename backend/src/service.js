@@ -6,6 +6,7 @@ import {
 import { db, now, tx } from './db.js';
 import { newHandshake, checkHandshake } from './handshake.js';
 import { sendPush } from './push.js';
+import { businessFor, checkMonthly } from './business.js';
 
 export class ApiError extends Error {
   constructor(status, message, extra = {}) { super(message); this.status = status; this.extra = extra; }
@@ -87,7 +88,11 @@ export function createBookings(customer, input) {
   if (!['INSTANT', 'SCHEDULED'].includes(booking_mode)) fail(400, 'Pick instant or scheduled');
   if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) fail(400, 'Set the location pin');
   if (!address || String(address).trim().length < 3) fail(400, 'Enter the address');
-  if (!UPI_RE.test(upi_id || '')) fail(400, 'Enter a valid UPI ID (name@bank)');
+  // Krewzo Business: plan discount, wider worker search, and the option to put the job on the monthly bill.
+  const biz = businessFor(customer.id);
+  const pay_mode = input.pay_mode === 'MONTHLY' ? 'MONTHLY' : 'UPI';
+  if (pay_mode === 'MONTHLY' && !biz) fail(402, 'Monthly billing needs a Krewzo Business plan');
+  if (pay_mode === 'UPI' && !UPI_RE.test(upi_id || '')) fail(400, 'Enter a valid UPI ID (name@bank)');
 
   let scheduled_at = null;
   if (booking_mode === 'SCHEDULED') {
@@ -97,31 +102,34 @@ export function createBookings(customer, input) {
     if (new Date(scheduled_at) <= new Date()) fail(400, 'That slot has already passed');
   }
 
-  const account_type = input.account_type === 'BUSINESS' ? 'BUSINESS' : 'PERSONAL';
-  const gstin = account_type === 'BUSINESS' ? String(input.gstin || '').toUpperCase().trim() : null;
+  const account_type = biz || input.account_type === 'BUSINESS' ? 'BUSINESS' : 'PERSONAL';
+  const gstin = biz ? biz.gstin : account_type === 'BUSINESS' ? String(input.gstin || '').toUpperCase().trim() : null;
   if (account_type === 'BUSINESS' && !GSTIN_RE.test(gstin)) fail(400, 'Enter a valid 15-character GSTIN');
-  const business_name = account_type === 'BUSINESS' ? String(input.business_name || '').trim() || customer.name : null;
+  const business_name = biz ? biz.business_name : account_type === 'BUSINESS' ? String(input.business_name || '').trim() || customer.name : null;
 
   let q;
-  try { q = quotePrice({ skill_tier, duration, worker_count, addons: input.addons || [], insurance: !!input.insurance }); }
+  try { q = quotePrice({ skill_tier, duration, worker_count, addons: input.addons || [], insurance: !!input.insurance, fee_discount: biz?.info.fee_off || 0 }); }
   catch (e) { fail(400, e.message); }
+  if (pay_mode === 'MONTHLY') checkMonthly(biz, q.total.escrow_total);
+  const payer = pay_mode === 'MONTHLY' ? 'monthly-bill' : upi_id;
+  const dispatch_km = biz?.info.radius_km || DISPATCH_RADIUS_KM;
 
   // Simulated UPI collect: the payment succeeds and every rupee lands in escrow, one ledger row per worker ticket.
   const payment_ref = ref('PAY');
   const t = now();
   const ids = tx(() => {
-    const g = db.prepare(`INSERT INTO booking_groups (customer_id, account_type, gstin, business_name, worker_count, amount_total, payer_upi, payment_ref, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?)`).run(customer.id, account_type, gstin, business_name, worker_count, q.total.escrow_total, upi_id, payment_ref, t);
+    const g = db.prepare(`INSERT INTO booking_groups (customer_id, account_type, gstin, business_name, worker_count, amount_total, payer_upi, payment_ref, created_at, pay_mode, billed_to)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(customer.id, account_type, gstin, business_name, worker_count, q.total.escrow_total, payer, pay_mode === 'MONTHLY' ? ref('MBL') : payment_ref, t, pay_mode, biz?.owner_id ?? null);
     const groupId = Number(g.lastInsertRowid);
     const p = q.per_worker;
     const ins = db.prepare(`INSERT INTO bookings (group_id, customer_id, skill_tier, trade_tag, worker_count, booking_mode, scheduled_at, duration, lat, lng, address, addons,
-      base_wage, addons_total, platform_fee, gst_amount, insurance_fee, worker_payout, escrow_total, status, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      base_wage, addons_total, platform_fee, gst_amount, insurance_fee, worker_payout, escrow_total, status, created_at, dispatch_km)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     const esc = db.prepare(`INSERT INTO escrow_ledger (booking_id, amount_held, worker_payout, platform_fee, status, tx_ref, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`);
     const out = [];
     for (let i = 0; i < worker_count; i++) {
       const r = ins.run(groupId, customer.id, skill_tier, trade_tag, worker_count, booking_mode, scheduled_at, duration, lat, lng, String(address).trim(),
-        JSON.stringify(q.addons), p.base_wage, p.addons_total, p.platform_fee, p.gst_amount, p.insurance_fee, p.worker_payout, p.escrow_total, S.SEARCHING, t);
+        JSON.stringify(q.addons), p.base_wage, p.addons_total, p.platform_fee, p.gst_amount, p.insurance_fee, p.worker_payout, p.escrow_total, S.SEARCHING, t, dispatch_km);
       const id = Number(r.lastInsertRowid);
       esc.run(id, p.escrow_total, p.worker_payout, p.escrow_total - p.worker_payout, 'HELD', payment_ref, t, t);
       out.push(id);
@@ -157,7 +165,7 @@ function eligible(w, b) {
   if (SKILL_TIERS[w.skill_tier].rank < SKILL_TIERS[b.skill_tier].rank) return null;
   if (b.skill_tier !== 'TIER_1' && !w.trade_tags.includes(b.trade_tag)) return null;
   const d = haversineKm(w, b);
-  return d <= DISPATCH_RADIUS_KM ? d : null;
+  return d <= (b.dispatch_km || DISPATCH_RADIUS_KM) ? d : null; // Business Pro searches wider
 }
 
 // Before accepting, the worker sees the customer's first name and locality only (full address after accept).
