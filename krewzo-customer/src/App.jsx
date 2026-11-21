@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Briefcase, ChevronRight, ClipboardList, LifeBuoy, LogOut, Plus, User } from 'lucide-react';
 import { TRADE_TAGS, rupees } from '@krewzo/shared';
-import { api, clearPush, getServer, getToken, setServer, setToken, setupPush } from './lib.js';
+import { api, clearPush, getMode, getServer, getToken, setMode, setServer, setToken, setupPush } from './lib.js';
 import Book from './Book.jsx';
 import Tracking from './Tracking.jsx';
 import Business from './Business.jsx';
+import Ops, { OpsLogin } from './Ops.jsx';
 
 const HELPLINE = import.meta.env.VITE_HELPLINE || '18001234567';
 
@@ -13,18 +14,25 @@ export const Wordmark = ({ size = 'text-2xl' }) => (
 );
 
 export default function App() {
+  const [mode, setModeState] = useState(getMode);
   const [token, setTok] = useState(getToken);
+  const [teamLogin, setTeamLogin] = useState(false);
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState('book');
   const [trackId, setTrackId] = useState(null);
 
   useEffect(() => {
-    if (!token) return;
-    api('GET', '/me').then((r) => setUser(r.user)).catch(() => { setToken(null); setTok(null); });
+    if (!token || mode === 'ops') return;
+    // /me also renews the login, so customers stay logged in
+    api('GET', '/me').then((r) => { if (r.token) setToken(r.token); setUser(r.user); }).catch(() => { setToken(null); setTok(null); });
     setupPush((id) => { setTab('list'); setTrackId(id); });
   }, [token]);
 
-  if (!token) return <Login onDone={(r) => { setToken(r.token); setTok(r.token); setUser(r.user); }} />;
+  const toOps = (r) => { setToken(r.token); setMode('ops'); setModeState('ops'); setTok(r.token); setTeamLogin(false); };
+  const leaveOps = () => { setToken(null); setMode('customer'); setModeState('customer'); setTok(null); };
+  if (token && mode === 'ops') return <Ops onLogout={leaveOps} />;
+  if (!token && teamLogin) return <OpsLogin onDone={toOps} onBack={() => setTeamLogin(false)} />;
+  if (!token) return <Login onDone={(r) => { setToken(r.token); setTok(r.token); setUser(r.user); }} onTeam={() => setTeamLogin(true)} />;
   if (!user) return <div className="h-full flex items-center justify-center"><Wordmark size="text-4xl" /></div>;
 
   const logout = () => { clearPush(); setToken(null); setTok(null); setUser(null); };
@@ -82,7 +90,7 @@ function ServerField() {
 
 const input = 'h-14 w-full rounded-2xl border border-line bg-card px-4 text-lg outline-none focus:border-ink transition';
 
-function Login({ onDone }) {
+function Login({ onDone, onTeam }) {
   const [f, setF] = useState({ phone: '', pin: '', name: '' });
   const [err, setErr] = useState('');
   const [needName, setNeedName] = useState(false);
@@ -108,7 +116,10 @@ function Login({ onDone }) {
         <button className="h-14 rounded-2xl bg-ink text-paper text-lg font-bold mt-1">{needName ? 'Create account' : 'Continue'}</button>
       </div>
       <p className="text-xs text-muted text-center mt-4">New number? We'll create your account. Demo: 9999999999 / 1234</p>
-      <div className="mt-auto pt-8 text-center"><ServerField /></div>
+      <div className="mt-auto pt-8 flex flex-col items-center gap-3">
+        <button type="button" onClick={onTeam} className="text-sm font-semibold text-muted underline underline-offset-4">Krewzo team login</button>
+        <ServerField />
+      </div>
     </form>
   );
 }

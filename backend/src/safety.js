@@ -4,6 +4,7 @@ import { BOOKING_STATUS as S } from '@krewzo/shared';
 import { db, now, tx } from './db.js';
 import * as svc from './service.js';
 import { sendPush } from './push.js';
+import { notifyOps } from './ops.js';
 
 const fail = (status, msg, extra) => { throw new svc.ApiError(status, msg, extra); };
 const ago = (min) => new Date(Date.now() - min * 60e3).toISOString();
@@ -99,6 +100,7 @@ export function reportProblem(role, userId, bookingId, { category, details }) {
     sendPush('workers', svc.getWorker(b.worker_id), { title: 'Payment on hold', body: 'The customer reported a problem with this job. Krewzo will call you to sort it out.', channel: 'jobs', ttlSec: 86400, data: { type: 'dispute', booking_id: b.id } });
     svc.broadcast(svc.getBooking(b.id));
   }
+  notifyOps(`⚠️ Problem reported by ${role}`, `${category.replace(/_/g, ' ').toLowerCase()} · job #${b.id}${hold ? ' · payment on hold' : ''}`, 'reports');
   return { ok: true, payment_held: hold };
 }
 
@@ -144,6 +146,8 @@ export function raiseSos(role, userId, { booking_id, lat, lng }) {
   const ok = (v, m) => (Number.isFinite(Number(v)) && Math.abs(Number(v)) <= m ? Number(v) : null);
   db.prepare('INSERT INTO sos_alerts (booking_id, role, user_id, lat, lng, created_at) VALUES (?,?,?,?,?,?)').run(b?.id ?? null, role, userId, ok(lat, 90), ok(lng, 180), now());
   console.error(`SOS from ${role} ${userId} booking ${b?.id ?? '-'} at ${lat},${lng}`); // shows in the Render log stream too
+  const who = role === 'customer' ? svc.getUser(userId) : svc.getWorker(userId);
+  notifyOps('🚨 SOS: call now', `${role} ${who?.name || ''} · +91 ${who?.phone || '?'}${b ? ' · job #' + b.id : ''}`, 'sos', { urgent: true });
   return { ok: true };
 }
 export function listSos() {

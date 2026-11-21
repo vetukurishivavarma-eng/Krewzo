@@ -18,7 +18,8 @@ export function checkPin(pin, stored) {
   return safeEqual(crypto.scryptSync(String(pin), salt, 32).toString('hex'), hash);
 }
 
-const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000;
+// 60 days, renewed every time the app opens (/api/me, worker home, /api/ops/me), so active users never get logged out.
+const TOKEN_TTL_MS = 60 * 24 * 3600 * 1000;
 export function signToken(role, id) {
   const body = Buffer.from(JSON.stringify({ role, id, exp: Date.now() + TOKEN_TTL_MS })).toString('base64url');
   return body + '.' + hmac(body);

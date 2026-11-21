@@ -7,6 +7,7 @@ import { db, now, SECRET } from './db.js';
 import { QrError, ageFrom, mobileMatches, parseSecureQr, photoDataUrl } from './aadhaar.js';
 import { ApiError, getWorker, publicWorker } from './service.js';
 import { sendPush } from './push.js';
+import { notifyOps } from './ops.js';
 
 const fail = (status, message, extra) => { throw new ApiError(status, message, extra); };
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
@@ -62,6 +63,7 @@ export function submitKyc(workerId, { qr, selfie, consent }) {
       photo = excluded.photo, selfie = excluded.selfie, flags = excluded.flags, submitted_at = excluded.submitted_at, reviewed_at = excluded.reviewed_at, note = NULL`)
     .run(w.id, status, hash, q.aadhaar_last4, q.name, q.dob, q.gender, q.area, q.version, q.sig_ok ? 1 : -1, q.photo, photoSelfie, JSON.stringify(flags), now(), auto ? now() : null);
   if (auto) approve(w.id);
+  else notifyOps('🪪 New ID check to review', `${w.name} · XXXX ${q.aadhaar_last4}${flags.length ? ' · ' + flags.length + ' flag(s)' : ''}`, 'kyc');
   return kycStatus(w.id);
 }
 

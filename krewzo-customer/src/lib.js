@@ -31,6 +31,31 @@ export async function openDownload(path) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
+// Which side of the app is logged in: the customer app or the Krewzo team (ops) screens.
+const MKEY = 'krewzo.mode';
+export const getMode = () => { try { return localStorage.getItem(MKEY) || 'customer'; } catch { return 'customer'; } };
+export const setMode = (m) => { try { m === 'ops' ? localStorage.setItem(MKEY, 'ops') : localStorage.removeItem(MKEY); } catch {} };
+
+// Ops phones: their own channels (SOS is max priority), token sent with retries, tap opens the right list.
+export async function setupOpsPush(onEvent) {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await PushNotifications.createChannel({ id: 'ops', name: 'Krewzo team: approvals and reports', importance: 4, visibility: 1, vibration: true });
+    await PushNotifications.createChannel({ id: 'ops_sos', name: 'Krewzo team: SOS', importance: 5, visibility: 1, vibration: true });
+    let p = await PushNotifications.checkPermissions();
+    if (p.receive.startsWith('prompt')) p = await PushNotifications.requestPermissions();
+    if (p.receive !== 'granted') return;
+    await PushNotifications.removeAllListeners();
+    await PushNotifications.addListener('registration', async ({ value }) => {
+      for (let i = 0; i < 6; i++) { try { await api('PATCH', '/ops/me', { fcm_token: value }); return; } catch { await new Promise((r) => setTimeout(r, 5000 * (i + 1))); } }
+    });
+    await PushNotifications.addListener('pushNotificationReceived', (n) => onEvent?.(null, n)); // app open: just refresh
+    await PushNotifications.addListener('pushNotificationActionPerformed', (a) => onEvent?.(a.notification?.data?.tab));
+    await PushNotifications.register();
+  } catch {}
+}
+export const clearOpsPush = () => (Capacitor.isNativePlatform() ? api('PATCH', '/ops/me', { fcm_token: null }).catch(() => {}) : null);
+
 export const connectSocket = () => io(getServer() || undefined, { auth: { token: getToken() }, transports: ['websocket', 'polling'] });
 
 // ---------- push (worker accepted / can't come / arrived) ----------

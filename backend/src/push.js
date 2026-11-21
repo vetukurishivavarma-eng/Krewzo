@@ -29,7 +29,7 @@ async function accessToken() {
   return cached.token;
 }
 
-const TABLES = new Set(['workers', 'users']); // whose row holds the token
+const TABLES = new Set(['workers', 'users', 'admins']); // whose row holds the token
 
 // Fire-and-forget; never throws into the booking flow.
 export async function sendPush(table, row, { title, body, data = {}, ttlSec = 120, channel = 'jobs', dataOnly = false }) {

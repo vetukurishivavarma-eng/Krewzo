@@ -12,6 +12,7 @@ import { announceNewReleases } from './releases.js';
 import * as kyc from './kyc.js';
 import * as biz from './business.js';
 import * as safety from './safety.js';
+import * as ops from './ops.js';
 import { ADMIN_PAGE } from './admin-page.js';
 
 // Wrong-PIN lockout and per-network login limits live in safety.js (stored in the DB, so restarts don't reset them).
@@ -55,7 +56,7 @@ export function createApp() {
     const t = readToken((req.headers.authorization || '').replace(/^Bearer /, '')) || readDownload(req);
     if (!t || (role && t.role !== role)) throw new svc.ApiError(401, 'Please log in again');
     // A valid token can outlive its account (e.g. the demo DB was reset), so the apps must be sent back to login.
-    const table = { customer: 'users', worker: 'workers' }[t.role];
+    const table = { customer: 'users', worker: 'workers', admin: 'admins' }[t.role];
     if (!table || !db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(t.id)) throw new svc.ApiError(401, 'Please log in again');
     req.auth = t;
     next();
@@ -101,7 +102,8 @@ export function createApp() {
   });
 
   app.get('/api/me', auth(), (req, res) => {
-    res.json(req.auth.role === 'customer' ? { user: { ...svc.publicUser(svc.getUser(req.auth.id)), business: biz.overview(req.auth.id).business } } : { worker: svc.publicWorker(svc.getWorker(req.auth.id)) });
+    const token = signToken(req.auth.role, req.auth.id); // renewed on every open: stay logged in
+    res.json(req.auth.role === 'customer' ? { token, user: { ...svc.publicUser(svc.getUser(req.auth.id)), business: biz.overview(req.auth.id).business } } : { token, worker: svc.publicWorker(svc.getWorker(req.auth.id)) });
   });
 
   // ---------- customer ----------
@@ -186,10 +188,27 @@ export function createApp() {
   });
 
   // ---------- ops ----------
+  // Ops actions: the owner's ADMIN_KEY (web page) or a logged-in ops account (app). Managing ops accounts is owner-only.
+  const isOwner = (req) => !!process.env.ADMIN_KEY && safeEqual(req.headers['x-admin-key'] || '', process.env.ADMIN_KEY);
   const admin = (req) => {
-    const key = process.env.ADMIN_KEY;
-    if (!key || !safeEqual(req.headers['x-admin-key'] || '', key)) throw new svc.ApiError(401, 'Admin key required');
+    if (isOwner(req)) return;
+    const t = readToken((req.headers.authorization || '').replace(/^Bearer /, ''));
+    if (t?.role === 'admin' && ops.getAdmin(t.id)?.pin_hash) return;
+    throw new svc.ApiError(401, 'Admin key required');
   };
+  const owner = (req) => { if (!isOwner(req)) throw new svc.ApiError(401, 'Owner admin key required'); };
+
+  // ---------- ops team (login from the customer app) ----------
+  app.post('/api/auth/ops', (req, res) => {
+    safety.limitIp(clientIp(req));
+    const a = ops.login(req.body || {});
+    res.json({ token: signToken('admin', a.id), admin: a });
+  });
+  app.get('/api/ops/me', auth('admin'), (req, res) => res.json({ token: signToken('admin', req.auth.id), admin: ops.meAdmin(req.auth.id) }));
+  app.patch('/api/ops/me', auth('admin'), (req, res) => res.json(ops.setAdminPush(req.auth.id, req.body?.fcm_token ?? null)));
+  app.get('/api/admin/ops-accounts', (req, res) => { owner(req); res.json(ops.listAdmins()); });
+  app.post('/api/admin/ops-accounts', (req, res) => { owner(req); res.json(ops.addAdmin(req.body?.phone, req.body?.name)); });
+  app.delete('/api/admin/ops-accounts/:id', (req, res) => { owner(req); res.json(ops.removeAdmin(Number(req.params.id))); });
   app.get('/admin', (req, res) => res.type('html').send(ADMIN_PAGE));
   app.get('/api/admin/kyc', (req, res) => { admin(req); res.json(kyc.listKyc(['PENDING', 'VERIFIED', 'REJECTED'].includes(req.query.status) ? req.query.status : 'PENDING')); });
   app.get('/api/admin/reports', (req, res) => { admin(req); res.json(safety.listReports(req.query.status === 'RESOLVED' ? 'RESOLVED' : 'OPEN')); });

@@ -150,6 +150,10 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE TABLE IF NOT EXISTS sos_alerts (id INTEGER PRIMARY KEY, booking_id INTEGER, role TEXT NOT NULL, user_id INTEGER NOT NULL, lat REAL, lng REAL, created_at TEXT NOT NULL, handled_at TEXT);
 CREATE TABLE IF NOT EXISTS auth_limits (key TEXT PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS team_invites (owner_id INTEGER NOT NULL REFERENCES users(id), member_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, PRIMARY KEY (owner_id, member_id));
+CREATE TABLE IF NOT EXISTS admins (
+  id INTEGER PRIMARY KEY, phone TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+  pin_hash TEXT, setup_hash TEXT, fcm_token TEXT, created_at TEXT NOT NULL -- pin_hash NULL until first login with the setup code
+);
 CREATE TABLE IF NOT EXISTS kyc_blocklist (identity_hash TEXT PRIMARY KEY, reason TEXT, created_at TEXT NOT NULL);
 `);
 

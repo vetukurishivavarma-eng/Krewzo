@@ -6,6 +6,7 @@ import {
 import { db, now, tx } from './db.js';
 import { newHandshake, checkHandshake } from './handshake.js';
 import { sendPush } from './push.js';
+import { signToken } from './auth.js';
 import { businessFor, checkMonthly } from './business.js';
 import { checkBookingLimits, isSuspended } from './safety.js';
 
@@ -531,7 +532,7 @@ export function workerHome(workerId) {
     COUNT(CASE WHEN status = 'PAID_OUT' THEN 1 END) AS n FROM bookings
     WHERE worker_id = ? AND ((status = 'PAID_OUT' AND paid_out_at >= ?) OR (status = 'CANCELLED' AND cancel_fee > 0 AND cancelled_at >= ?))`).get(w.id, day, day);
   const act = activeJob(w.id);
-  return { worker: publicWorker(w), today_earnings: today.s, today_shifts: today.n, active: act ? viewFor(act, 'worker') : null, upcoming: upcomingJobs(w.id), offers: act ? [] : openOffers(w.id) };
+  return { token: signToken('worker', w.id), worker: publicWorker(w), today_earnings: today.s, today_shifts: today.n, active: act ? viewFor(act, 'worker') : null, upcoming: upcomingJobs(w.id), offers: act ? [] : openOffers(w.id) };
 }
 
 export function passbook(workerId) {

@@ -46,6 +46,12 @@ dt { color:var(--muted); } dd { margin:0; font-weight:600; min-width:0; overflow
   <div class="bar"><div class="tabs" id="tabs"><button data-s="PENDING" class="on">To review</button><button data-s="VERIFIED">Approved</button><button data-s="REJECTED">Rejected</button></div>
     <span id="count" style="color:var(--muted)"></span></div>
   <div id="list"></div>
+  <h2 class="section-h">Ops team (app logins)</h2>
+  <p style="color:var(--muted);margin:0">They log in from the Krewzo customer app: <b>Log in</b> screen, then <b>Krewzo team login</b>. Each person gets a one-time setup code, then chooses a 6-digit PIN. They get notified of new ID checks, problem reports and SOS.</p>
+  <div id="team"></div>
+  <form id="teamf" class="bar" style="justify-content:flex-start">
+    <input id="tphone" type="text" inputmode="numeric" placeholder="Their phone" style="width:150px"><input id="tname" type="text" placeholder="Name" style="width:150px">
+    <button class="btn ok">Add / reset</button><span id="tmsg" style="font-weight:700"></span></form>
   <form id="resetf" class="bar" style="justify-content:flex-start;border-top:1px solid var(--line);padding-top:16px">
     <span style="color:var(--muted)">Send a partner back through the ID check:</span>
     <input id="rphone" type="text" inputmode="numeric" placeholder="Partner phone" style="width:170px"><button class="btn ghost">Reset ID check</button><span id="rmsg" style="color:var(--muted)"></span></form>
@@ -100,6 +106,29 @@ async function loadSafety() {
   } catch (e) { reps.append(el('div', { className: 'err', textContent: e.message })); }
 }
 
+async function loadTeam() {
+  const box = document.getElementById('team');
+  box.replaceChildren();
+  if (!key) return;
+  try {
+    const rows = await api('/api/admin/ops-accounts');
+    if (!rows.length) box.append(el('div', { className: 'empty', textContent: 'No ops accounts yet.' }));
+    rows.forEach((a) => box.append(el('div', { className: 'rep', style: 'grid-template-columns:1fr auto;align-items:center' }, [
+      el('div', { textContent: a.name + ' · +91 ' + a.phone + ' · ' + (a.active ? (a.push ? 'active, notifications on' : 'active, notifications off') : 'waiting for first login') }),
+      el('button', { className: 'btn no', textContent: 'Remove', onclick: async () => { await api('/api/admin/ops-accounts/' + a.id, { method: 'DELETE' }); loadTeam(); } }),
+    ])));
+  } catch (e) { box.append(el('div', { className: 'err', textContent: e.message })); }
+}
+document.getElementById('teamf').onsubmit = async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('tmsg');
+  try {
+    const r = await api('/api/admin/ops-accounts', { method: 'POST', body: JSON.stringify({ phone: document.getElementById('tphone').value, name: document.getElementById('tname').value }) });
+    msg.textContent = 'Setup code for ' + r.admin.name + ': ' + r.setup_code + '  (shown once, send it to them)';
+    loadTeam();
+  } catch (err) { msg.textContent = err.message; }
+};
+
 async function load() {
   const list = document.getElementById('list');
   list.replaceChildren();
@@ -133,7 +162,7 @@ function card(k) {
   }
   return el('div', { className: 'card' }, [el('div', { className: 'photos' }, [photo(k.selfie, 'Selfie'), photo(k.aadhaar_photo, 'Aadhaar photo')]), body]);
 }
-document.getElementById('keyf').onsubmit = (e) => { e.preventDefault(); key = document.getElementById('key').value.trim(); sessionStorage.setItem('krewzo.admin', key); load(); loadSafety(); };
+document.getElementById('keyf').onsubmit = (e) => { e.preventDefault(); key = document.getElementById('key').value.trim(); sessionStorage.setItem('krewzo.admin', key); load(); loadSafety(); loadTeam(); };
 setInterval(loadSafety, 30000); // SOS / reports refresh by themselves
 document.getElementById('resetf').onsubmit = async (e) => {
   e.preventDefault();
@@ -144,4 +173,5 @@ document.getElementById('resetf').onsubmit = async (e) => {
 document.getElementById('tabs').onclick = (e) => { const s = e.target.dataset.s; if (!s) return; tab = s; [...e.currentTarget.children].forEach((b) => b.classList.toggle('on', b === e.target)); load(); };
 load();
 loadSafety();
+loadTeam();
 </script></body></html>`;

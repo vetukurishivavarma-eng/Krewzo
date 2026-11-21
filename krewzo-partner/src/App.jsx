@@ -232,6 +232,7 @@ function Main({ t, lang, setLang, onLogout }) {
   const load = useCallback(async () => {
     try {
       const h = await api('GET', '/workers/me/home');
+      if (h.token) { setToken(h.token); syncNative(DICT[langRef.current]); } // renewed login: workers stay logged in
       setHome(h); setActive(h.active); setOffers(h.offers);
       if (isNative && !h.worker.push_ok) resendPushToken(); // server lost this phone's token: send it again
     } catch (e) {
