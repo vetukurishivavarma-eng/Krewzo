@@ -14,6 +14,8 @@
 
 **Auto-update + security (2026-11-21, v1.1.0 both apps)**: apps check GitHub releases (`<app>-vX.Y.Z`, public repo) on launch and show an Update banner -> native `UpdaterPlugin.java` downloads the APK and opens the installer (first time Android asks to allow installs from Krewzo). To ship an update: bump `version` in krewzo-<app>/package.json (gradle versionCode is derived from it), then `node scripts/release.mjs <app> "notes"`. Never reuse a version. PIN lockout: 5 wrong -> 15 min lock per phone+role (in-memory). `AUTO_KYC=1` on Render = new workers auto-approved -- REMOVE before launch. Auto-update CONFIRMED on a phone 2026-11-21 (user saw the partner 1.1.1 banner). NEXT: FCM push for job offers -- waiting on user: Firebase project "Krewzo", google-services.json -> krewzo-partner/android/app/, service-account key -> C:/Users/Shiva/krewzo-keystore/firebase-admin.json.
 
+**Live tracking (2026-11-21, partner 1.2.0 / customer 1.1.1)**: from accept until "I've arrived" the partner app runs @capacitor-community/background-geolocation 1.3.1 (foreground service, keeps going while Google Maps is open; posts via CapacitorHttp; `useLegacyBridge` on) every ~15 m. Server forwards `worker:location` only while ASSIGNED (test covers it). Customer map: live 👷 + dashed line + "~N min" ETA (heuristic, see `etaMin`). Not phone-tested yet. Firebase files are still in Downloads (user stopped the move) -- ask before moving them.
+
 **Not verified yet**
 - No one has clicked through the UI in a real browser or phone. First thing next session: `npm run dev`, open :5173 + :5174 side by side and run the demo loop from the README.
 - Camera QR scan is untested on a real phone (needs HTTPS → use a cloudflared tunnel).
