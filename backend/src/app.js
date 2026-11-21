@@ -16,6 +16,16 @@ import { ADMIN_PAGE } from './admin-page.js';
 
 // Wrong-PIN lockout and per-network login limits live in safety.js (stored in the DB, so restarts don't reset them).
 
+// The phone's real address. On Render the TCP peer is an internal proxy (10.x), so read what the edge
+// proxies add: Cloudflare's CF-Connecting-IP / True-Client-IP first, else the first X-Forwarded-For entry.
+// ponytail: X-Forwarded-For can be faked by the caller, which only lets them dodge the per-network limit
+// (per-phone PIN lockout still applies); tighten once the header Render passes is confirmed.
+export function clientIp(req) {
+  const h = req.headers;
+  const xff = String(h['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+  return String(h['cf-connecting-ip'] || h['true-client-ip'] || xff[0] || req.socket.remoteAddress || 'unknown');
+}
+
 // ?dl=<id>.<expiry>.<hmac> from /api/download-link: valid 5 minutes, for that exact file path, customer role only.
 function readDownload(req) {
   const m = /^(\d+)\.(\d+)\.([\w-]+)$/.exec(String(req.query.dl || ''));
@@ -27,7 +37,6 @@ function readDownload(req) {
 export function createApp() {
   seedIfEmpty();
   const app = express();
-  app.set('trust proxy', 1);
   const server = http.createServer(app);
   const io = new Server(server, { cors: { origin: true } });
 
@@ -54,7 +63,7 @@ export function createApp() {
 
   // ---------- auth ----------
   app.post('/api/auth/customer', (req, res) => {
-    safety.limitIp(req.ip);
+    safety.limitIp(clientIp(req));
     const phone = normPhone(req.body.phone);
     const { pin, name } = req.body;
     if (!validPhone(phone)) throw new svc.ApiError(400, 'Enter a 10-digit mobile number');
@@ -70,7 +79,7 @@ export function createApp() {
   });
 
   app.post('/api/auth/worker', (req, res) => {
-    safety.limitIp(req.ip);
+    safety.limitIp(clientIp(req));
     const phone = normPhone(req.body.phone);
     const { pin } = req.body;
     if (!validPhone(phone)) throw new svc.ApiError(400, 'Enter a 10-digit mobile number');
@@ -143,6 +152,8 @@ export function createApp() {
 
   // The release script calls this after publishing: push "new version ready" to every phone. Public on purpose:
   // it only re-reads GitHub releases (throttled), so calling it can't do anything but announce a real release.
+  // Echoes only the caller's own address (used to check what the hosting proxies pass through).
+  app.get('/api/whoami', (req, res) => res.json({ ip: clientIp(req), via: req.headers['cf-connecting-ip'] ? 'cf-connecting-ip' : req.headers['true-client-ip'] ? 'true-client-ip' : req.headers['x-forwarded-for'] ? 'x-forwarded-for' : 'socket' }));
   app.post('/api/releases/check', async (req, res) => res.json({ sent: await announceNewReleases(req.body?.tag) }));
 
   // ---------- Krewzo Business subscription ----------
