@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
 import { DICT, LANGS } from './i18n.js';
-import { api, getServer, setServer, chime, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE } from './lib.js';
+import { api, getServer, setServer, isNative, startTrip, stopTrip, chime, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE } from './lib.js';
 import JobAlert from './JobAlert.jsx';
 import ActiveJob from './ActiveJob.jsx';
 import Passbook from './Passbook.jsx';
@@ -190,14 +190,28 @@ function Main({ t, lang, setLang, onLogout }) {
 
   // While on duty, keep the server's idea of where we are fresh (every ~100 m / 30 s).
   const online = home?.worker.is_online;
+  const enRoute = active?.status === 'ASSIGNED';
+  const enRouteRef = useRef(false);
+  enRouteRef.current = enRoute;
   useEffect(() => {
     if (!online || !navigator.geolocation) return;
     let last = 0;
     const id = navigator.geolocation.watchPosition(
-      (p) => { setGeoErr(false); if (Date.now() - last > 30000) { last = Date.now(); api('PATCH', '/workers/me', { lat: p.coords.latitude, lng: p.coords.longitude }).catch(() => {}); } },
+      (p) => {
+        setGeoErr(false);
+        if (enRouteRef.current && isNative) return; // the trip watcher below is sending
+        if (Date.now() - last > (enRouteRef.current ? 5000 : 30000)) { last = Date.now(); api('PATCH', '/workers/me', { lat: p.coords.latitude, lng: p.coords.longitude }).catch(() => {}); } },
       () => setGeoErr(true), { enableHighAccuracy: true, maximumAge: 15000 });
     return () => navigator.geolocation.clearWatch(id);
   }, [online]);
+
+  // On the way to a job: live location for the customer until "I've arrived".
+  useEffect(() => {
+    if (!enRoute) return;
+    let id, dead = false;
+    startTrip(() => setGeoErr(true)).then((x) => { if (dead) stopTrip(x); else id = x; });
+    return () => { dead = true; stopTrip(id); };
+  }, [enRoute, active?.id]);
 
   async function toggleDuty() {
     unlockAudio(); vibrate(80); setBusy(true);

@@ -357,10 +357,10 @@ export function setWorkerStatus(workerId, { is_online, lat, lng, language }) {
   if (is_online != null) db.prepare('UPDATE workers SET is_online = ? WHERE id = ?').run(is_online ? 1 : 0, w.id);
   const nw = getWorker(w.id);
   if (nw.is_online) dispatchToWorker(nw.id);
-  // Let the customer of an active ticket watch the worker approach.
+  // Live tracking: the customer sees the worker only while they're on the way (stops at ARRIVED, for privacy).
   if (lat != null) {
     const act = activeJob(nw.id);
-    if (act) hooks.emit(`customer:${act.customer_id}`, 'worker:location', { booking_id: act.id, lat, lng });
+    if (act?.status === S.ASSIGNED) hooks.emit(`customer:${act.customer_id}`, 'worker:location', { booking_id: act.id, lat, lng });
   }
   return publicWorker(nw);
 }

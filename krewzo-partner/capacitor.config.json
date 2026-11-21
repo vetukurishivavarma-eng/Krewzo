@@ -2,6 +2,12 @@
   "appId": "in.krewzo.partner",
   "appName": "Krewzo Partner",
   "webDir": "dist",
-  "server": { "androidScheme": "http", "cleartext": true },
-  "android": { "allowMixedContent": true }
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "useLegacyBridge": true
+  }
 }

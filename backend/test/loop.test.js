@@ -156,3 +156,25 @@ test('token for a deleted account gets 401 so the app returns to login', async (
   assert.equal((await call('GET', '/api/workers/me/home', null, signToken('worker', 99999))).status, 401);
   assert.equal((await call('GET', '/api/me', null, signToken('customer', 99999))).status, 401);
 });
+
+test('customer sees live worker location only until the worker arrives', async () => {
+  const cust = await login('customer', '9999999999');
+  const w = await login('worker', '9000000003');
+  const id = (await book(cust)).body.tickets[0].id;
+  assert.equal((await call('POST', `/api/bookings/${id}/accept`, null, w)).status, 200);
+
+  const sock = ioc(base, { auth: { token: cust }, transports: ['websocket'] });
+  await new Promise((r) => sock.on('connect', r));
+  const seen = [];
+  sock.on('worker:location', (e) => seen.push(e));
+  const move = (lat) => call('PATCH', '/api/workers/me', { lat, lng: L.lng }, w);
+  const settle = () => new Promise((r) => setTimeout(r, 200));
+
+  await move(L.lat + 0.01); await settle();
+  assert.deepEqual(seen.map((e) => [e.booking_id, e.lat]), [[id, L.lat + 0.01]]);
+
+  assert.equal((await call('POST', `/api/bookings/${id}/arrive`, null, w)).status, 200);
+  await move(L.lat + 0.02); await settle();
+  assert.equal(seen.length, 1); // stopped at arrival
+  sock.close();
+});

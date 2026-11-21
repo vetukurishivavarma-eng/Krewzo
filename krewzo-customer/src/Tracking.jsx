@@ -4,6 +4,9 @@ import { api, connectSocket, getServer, getToken } from './lib.js';
 import HandshakeSheet from './HandshakeSheet.jsx';
 import MapPin from './MapPin.jsx';
 
+// ponytail: straight-line km x 1.4 road factor at ~18 km/h city speed. Swap for a routing API if ETAs feel off.
+const etaMin = (km) => Math.max(1, Math.ceil(((km * 1.4) / 18) * 60));
+
 export default function Tracking({ groupId, onBack }) {
   const [g, setG] = useState(null);
   const [sheet, setSheet] = useState(null); // { id, phase }
@@ -40,7 +43,7 @@ export default function Tracking({ groupId, onBack }) {
     try { const b = await api('POST', `/bookings/${id}/rate`, { stars }); setG((x) => ({ ...x, tickets: x.tickets.map((t) => (t.id === id ? b : t)) })); } catch (e) { setErr(e.message); }
   };
 
-  const assigned = g.tickets.filter((t) => t.worker?.lat != null && ['ASSIGNED', 'ARRIVED'].includes(t.status));
+  const assigned = g.tickets.filter((t) => t.worker?.lat != null && t.status === 'ASSIGNED');
   return (
     <div className="px-4 pb-6 flex flex-col gap-3">
       <button onClick={onBack} className="self-start text-sm text-slate-500">← All bookings</button>
@@ -52,6 +55,7 @@ export default function Tracking({ groupId, onBack }) {
         <a href={`${getServer()}/api/groups/${g.id}/invoice?token=${encodeURIComponent(getToken())}`} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-full bg-white border border-slate-200">🧾 {g.account_type === 'BUSINESS' ? 'GST invoice' : 'Invoice'}</a>
       </div>
 
+      {assigned.length > 0 && <div className="text-xs font-bold text-emerald-700 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />LIVE · worker on the way</div>}
       {assigned.length > 0 && <MapPin lat={first.lat} lng={first.lng} height={180} others={assigned.map((t) => ({ lat: t.worker.lat, lng: t.worker.lng, emoji: '👷' }))} />}
 
       {g.tickets.map((t, i) => <Ticket key={t.id} t={t} n={g.tickets.length > 1 ? i + 1 : null} onSheet={(phase) => setSheet({ id: t.id, phase })} onCancel={() => cancel(t.id)} onRate={(s) => rate(t.id, s)} />)}
@@ -108,7 +112,7 @@ function Ticket({ t, n, onSheet, onCancel, onRate }) {
             <div className="w-14 h-14 rounded-full bg-emerald-600 text-white text-2xl font-black flex items-center justify-center">{w.name[0]}</div>}
           <div className="flex-1">
             <div className="font-bold flex items-center gap-1.5">{w.name} {w.kyc_verified && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">✓ KYC VERIFIED</span>}</div>
-            <div className="text-sm text-slate-500">⭐ {Number(w.rating).toFixed(1)} · {SKILL_TIERS[w.skill_tier].label}{km != null && t.status === 'ASSIGNED' ? ` · ${km.toFixed(1)} km away` : ''}</div>
+            <div className="text-sm text-slate-500">⭐ {Number(w.rating).toFixed(1)} · {SKILL_TIERS[w.skill_tier].label}{km != null && t.status === 'ASSIGNED' ? ` · ${km.toFixed(1)} km · ~${etaMin(km)} min away` : ''}</div>
           </div>
           {t.status !== 'PAID_OUT' && <a href={`tel:${w.phone}`} className="w-11 h-11 rounded-full bg-emerald-600 text-white flex items-center justify-center text-lg" aria-label="Call worker">📞</a>}
         </div>

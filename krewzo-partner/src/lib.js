@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core';
 import { LANGS, SAY } from './i18n.js';
 
 // ---------- API ----------
@@ -22,6 +23,28 @@ export async function api(method, path, body) {
   if (!r.ok) throw Object.assign(new Error(data.message || data.error || 'Network error'), { status: r.status, data });
   return data;
 }
+
+// ---------- live trip tracking ----------
+// From accept until "I've arrived", stream the worker's position to the customer, even while Google Maps is in front.
+// Native HTTP on purpose: Android throttles WebView requests after ~5 min in the background.
+const BgGeo = registerPlugin('BackgroundGeolocation');
+export const isNative = Capacitor.isNativePlatform();
+export async function startTrip(onError) {
+  if (!isNative) return null; // browser dev: Main's watchPosition covers it
+  return BgGeo.addWatcher({
+    backgroundTitle: 'Krewzo: heading to job',
+    backgroundMessage: 'Sharing your location with the customer until you arrive',
+    requestPermissions: true, stale: false, distanceFilter: 15,
+  }, (loc, err) => {
+    if (err) return onError?.(err);
+    CapacitorHttp.request({
+      method: 'PATCH', url: getServer() + '/api/workers/me',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + getToken() },
+      data: { lat: loc.latitude, lng: loc.longitude },
+    }).catch(() => {});
+  });
+}
+export const stopTrip = (id) => { if (id) BgGeo.removeWatcher({ id }).catch(() => {}); };
 
 export const connectSocket = () => io(getServer() || undefined, { auth: { token: getToken() }, transports: ['websocket', 'polling'] });
 
