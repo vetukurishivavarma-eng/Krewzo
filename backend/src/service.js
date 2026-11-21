@@ -41,7 +41,7 @@ export function publicWorker(w) {
 }
 export function publicUser(u) {
   if (!u) return null;
-  const { pin_hash, ...rest } = u;
+  const { pin_hash, fcm_token, ...rest } = u;
   return rest;
 }
 
@@ -181,7 +181,7 @@ function offer(w, b, d) {
     .run(b.id, w.id, 'OFFERED', d, now());
   const o = offerView(b, d);
   hooks.emit(`worker:${w.id}`, 'job:offer', o);
-  sendPush(w, offerPush(w.language, o));
+  sendPush('workers', w, offerPush(w.language, o));
   if (!hooks.isConnected(w.id)) hooks.notifyWhatsApp(w, 'offer', o);
   return true;
 }
@@ -244,6 +244,7 @@ export function acceptJob(workerId, bookingId) {
   });
   expireOffers(b.id, w.id);
   broadcast(b);
+  pushCustomer(b, `👷 ${w.name} is on the way`, 'Your worker accepted. Track them live in the app.');
   return viewFor(b, 'worker');
 }
 
@@ -257,6 +258,7 @@ export function releaseJob(workerId, bookingId) {
   const b = transition(ownTicket(w, bookingId), S.SEARCHING, { worker_id: null, assigned_at: null, start_handshake: null, handshake_fails: 0 });
   db.prepare("UPDATE job_offers SET status = 'RELEASED' WHERE booking_id = ? AND worker_id = ?").run(b.id, w.id);
   broadcast(b);
+  pushCustomer(b, 'Finding you another worker', `${w.name} can't make it. Your money is still safe in escrow.`);
   dispatch(b);
   dispatchToWorker(w.id);
   return { ok: true };
@@ -266,6 +268,7 @@ export function markArrived(workerId, bookingId) {
   const w = getWorker(workerId);
   const b = transition(ownTicket(w, bookingId), S.ARRIVED, { arrived_at: now() });
   broadcast(b);
+  pushCustomer(b, `📍 ${w.name} has arrived`, 'Open Krewzo and share the START code to begin.');
   return viewFor(b, 'worker');
 }
 
@@ -351,15 +354,23 @@ export function rateWorker(customerId, bookingId, stars) {
   return viewFor(getBooking(b.id), 'customer');
 }
 
+// ---------- push tokens ----------
+// One phone = one account per app: if another account last used this phone, stop pushing to it.
+export function setPushToken(table, id, token) {
+  if (token !== null && !(typeof token === 'string' && token.length > 0 && token.length < 4096)) fail(400, 'Bad push token');
+  if (token) db.prepare(`UPDATE ${table} SET fcm_token = NULL WHERE fcm_token = ? AND id != ?`).run(token, id);
+  db.prepare(`UPDATE ${table} SET fcm_token = ? WHERE id = ?`).run(token, id);
+}
+
+// Customer pushes for the moments they're not watching the app (start/end/cancel happen with them present).
+function pushCustomer(b, title, body) {
+  sendPush('users', getUser(b.customer_id), { title, body, channel: 'updates', ttlSec: 900, data: { group_id: b.group_id } });
+}
+
 // ---------- worker state ----------
 export function setWorkerStatus(workerId, { is_online, lat, lng, language, fcm_token }) {
   const w = getWorker(workerId);
-  if (fcm_token !== undefined) {
-    if (fcm_token !== null && !(typeof fcm_token === 'string' && fcm_token.length < 4096)) fail(400, 'Bad push token');
-    // One phone = one worker: if another account last used this phone, stop pushing to it.
-    if (fcm_token) db.prepare('UPDATE workers SET fcm_token = NULL WHERE fcm_token = ? AND id != ?').run(fcm_token, w.id);
-    db.prepare('UPDATE workers SET fcm_token = ? WHERE id = ?').run(fcm_token, w.id);
-  }
+  if (fcm_token !== undefined) setPushToken('workers', w.id, fcm_token);
   if (lat != null || lng != null) {
     if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) fail(400, 'Bad location');
     db.prepare('UPDATE workers SET lat = ?, lng = ? WHERE id = ?').run(lat, lng, w.id);

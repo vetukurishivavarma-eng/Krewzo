@@ -29,24 +29,26 @@ async function accessToken() {
   return cached.token;
 }
 
+const TABLES = new Set(['workers', 'users']); // whose row holds the token
+
 // Fire-and-forget; never throws into the booking flow.
-export async function sendPush(worker, { title, body, data = {}, ttlSec = 120 }) {
-  if (!sa || !worker?.fcm_token) return false;
+export async function sendPush(table, row, { title, body, data = {}, ttlSec = 120, channel = 'jobs' }) {
+  if (!sa || !row?.fcm_token || !TABLES.has(table)) return false;
   try {
     const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
       method: 'POST',
       headers: { authorization: 'Bearer ' + (await accessToken()), 'content-type': 'application/json' },
       body: JSON.stringify({ message: {
-        token: worker.fcm_token,
+        token: row.fcm_token,
         notification: { title, body },
         data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
-        android: { priority: 'HIGH', ttl: `${ttlSec}s`, notification: { channel_id: 'jobs', sound: 'default', default_vibrate_timings: true } },
+        android: { priority: 'HIGH', ttl: `${ttlSec}s`, notification: { channel_id: channel, sound: 'default', default_vibrate_timings: true } },
       } }),
     });
     if (r.ok) return true;
     const err = await r.text();
     // App uninstalled / token rotated: forget it so we stop trying.
-    if (r.status === 404 || /UNREGISTERED|registration-token-not-registered/.test(err)) db.prepare('UPDATE workers SET fcm_token = NULL WHERE id = ?').run(worker.id);
+    if (r.status === 404 || /UNREGISTERED|registration-token-not-registered/.test(err)) db.prepare(`UPDATE ${table} SET fcm_token = NULL WHERE id = ?`).run(row.id);
     else console.error('FCM send failed', r.status, err);
   } catch (e) { console.error('FCM error', e.message); }
   return false;

@@ -1,4 +1,6 @@
 import { io } from 'socket.io-client';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 const KEY = 'krewzo.customer.token';
 export const getToken = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
@@ -22,3 +24,25 @@ export async function api(method, path, body) {
 }
 
 export const connectSocket = () => io(getServer() || undefined, { auth: { token: getToken() }, transports: ['websocket', 'polling'] });
+
+// ---------- push (worker accepted / can't come / arrived) ----------
+const isNative = Capacitor.isNativePlatform();
+// Ask once, register with Firebase, give the server our token. Tapping opens that booking.
+export async function setupPush(onOpen) {
+  if (!isNative) return;
+  try {
+    await PushNotifications.createChannel({ id: 'updates', name: 'Booking updates', importance: 4, visibility: 1, vibration: true });
+    let p = await PushNotifications.checkPermissions();
+    if (p.receive.startsWith('prompt')) p = await PushNotifications.requestPermissions();
+    if (p.receive !== 'granted') return;
+    await PushNotifications.removeAllListeners();
+    await PushNotifications.addListener('registration', ({ value }) => api('PATCH', '/me', { fcm_token: value }).catch(() => {}));
+    await PushNotifications.addListener('pushNotificationActionPerformed', (a) => {
+      const id = Number(a.notification?.data?.group_id);
+      if (id) onOpen?.(id);
+    });
+    await PushNotifications.register();
+  } catch {}
+}
+// Logging out: stop updates going to this phone.
+export const clearPush = () => (isNative ? api('PATCH', '/me', { fcm_token: null }).catch(() => {}) : null);

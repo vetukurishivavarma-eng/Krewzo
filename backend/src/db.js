@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS job_offers (
 `);
 
 // Columns added after launch (SQLite has no ADD COLUMN IF NOT EXISTS).
-for (const sql of ['ALTER TABLE workers ADD COLUMN fcm_token TEXT']) { try { db.exec(sql); } catch {} }
+for (const sql of ['ALTER TABLE workers ADD COLUMN fcm_token TEXT', 'ALTER TABLE users ADD COLUMN fcm_token TEXT']) { try { db.exec(sql); } catch {} }
 
 export const now = () => new Date().toISOString();
 

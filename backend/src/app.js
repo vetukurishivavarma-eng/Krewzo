@@ -92,6 +92,7 @@ export function createApp() {
   });
 
   // ---------- customer ----------
+  app.patch('/api/me', auth('customer'), (req, res) => { svc.setPushToken('users', req.auth.id, req.body.fcm_token ?? null); res.json({ ok: true }); });
   app.post('/api/bookings', auth('customer'), (req, res) => res.status(201).json(svc.createBookings(svc.getUser(req.auth.id), req.body)));
   app.get('/api/bookings', auth('customer'), (req, res) => res.json(svc.listGroups(req.auth.id)));
   app.get('/api/groups/:gid', auth('customer'), (req, res) => res.json(svc.getGroup(req.auth.id, Number(req.params.gid))));

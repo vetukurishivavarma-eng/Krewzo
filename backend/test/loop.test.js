@@ -190,3 +190,13 @@ test('push token is stored per phone and never returned by the API', async () =>
   assert.deepEqual(db.prepare("SELECT phone FROM workers WHERE fcm_token = 'phone-token-1'").all().map((x) => x.phone), ['9000000002']);
   assert.equal((await call('PATCH', '/api/workers/me', { fcm_token: 42 }, b)).status, 400);
 });
+
+test('customer push token is stored and never returned by the API', async () => {
+  const c = await login('customer', '9999999999');
+  assert.equal((await call('PATCH', '/api/me', { fcm_token: 'cust-phone-1' }, c)).status, 200);
+  assert.equal('fcm_token' in (await call('GET', '/api/me', null, c)).body.user, false);
+  const { db } = await import('../src/db.js');
+  assert.equal(db.prepare("SELECT fcm_token FROM users WHERE phone = '9999999999'").get().fcm_token, 'cust-phone-1');
+  assert.equal((await call('PATCH', '/api/me', { fcm_token: null }, c)).status, 200);
+  assert.equal(db.prepare("SELECT fcm_token FROM users WHERE phone = '9999999999'").get().fcm_token, null);
+});

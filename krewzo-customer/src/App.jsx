@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SKILL_TIERS, TRADE_TAGS, rupees } from '@krewzo/shared';
-import { api, getServer, getToken, setServer, setToken } from './lib.js';
+import { api, clearPush, getServer, getToken, setServer, setToken, setupPush } from './lib.js';
 import Book from './Book.jsx';
 import Tracking from './Tracking.jsx';
 
@@ -12,12 +12,13 @@ export default function App() {
   useEffect(() => {
     if (!token) return;
     api('GET', '/me').then((r) => setUser(r.user)).catch(() => { setToken(null); setTok(null); });
+    setupPush((id) => setView({ name: 'track', id }));
   }, [token]);
 
   if (!token) return <Login onDone={(r) => { setToken(r.token); setTok(r.token); setUser(r.user); }} />;
   if (!user) return <div className="h-full flex items-center justify-center text-slate-400">Loading…</div>;
 
-  const logout = () => { setToken(null); setTok(null); setUser(null); };
+  const logout = () => { clearPush(); setToken(null); setTok(null); setUser(null); };
   return (
     <div className="min-h-full max-w-md mx-auto bg-slate-50 pb-24">
       <header className="sticky top-0 z-20 bg-slate-50/90 backdrop-blur px-4 py-3 flex items-center justify-between">
