@@ -37,7 +37,11 @@ export async function setupPush(onOpen) {
     if (p.receive.startsWith('prompt')) p = await PushNotifications.requestPermissions();
     if (p.receive !== 'granted') return;
     await PushNotifications.removeAllListeners();
-    await PushNotifications.addListener('registration', ({ value }) => api('PATCH', '/me', { fcm_token: value }).catch(() => {}));
+    await PushNotifications.addListener('registration', async ({ value }) => {
+      for (let i = 0; i < 6; i++) { // retry: the free server may be waking up
+        try { await api('PATCH', '/me', { fcm_token: value }); return; } catch { await new Promise((r) => setTimeout(r, 5000 * (i + 1))); }
+      }
+    });
     await PushNotifications.addListener('pushNotificationActionPerformed', (a) => {
       const id = Number(a.notification?.data?.group_id);
       if (id) onOpen?.(id);

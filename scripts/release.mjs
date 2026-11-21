@@ -40,8 +40,16 @@ await gh(`https://uploads.github.com/repos/${REPO}/releases/${rel.id}/assets?nam
 fs.copyFileSync(apkPath, path.join(os.homedir(), 'Downloads', name));
 
 // Tell every installed phone (push, kept 7 days for phones that are off). The free server may need ~50 s to wake.
-try {
-  const r = await fetch(`${process.env.VITE_API_URL}/api/releases/check`, { method: 'POST', signal: AbortSignal.timeout(90e3) });
-  console.log('Update push:', (await r.json()).sent, 'phones');
-} catch (e) { console.log('Update push skipped:', e.message, '(the server re-checks every 15 min while awake)'); }
+// Retries for ~4 min: the server may be restarting after a deploy.
+for (let i = 1; i <= 6; i++) {
+  try {
+    const r = await fetch(`${process.env.VITE_API_URL}/api/releases/check`, { method: 'POST', signal: AbortSignal.timeout(60e3) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    console.log('Update push:', (await r.json()).sent, 'phones');
+    break;
+  } catch (e) {
+    if (i === 6) console.log('Update push skipped:', e.message, '(the server re-checks every 15 min while awake)');
+    else await new Promise((res) => setTimeout(res, 20e3));
+  }
+}
 console.log(`Released ${tag}: ${rel.html_url}\nCopy: Downloads\\${name}`);

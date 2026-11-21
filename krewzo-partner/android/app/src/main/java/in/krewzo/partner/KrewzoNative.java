@@ -57,6 +57,12 @@ public class KrewzoNative extends Plugin {
         call.resolve();
     }
 
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName()));
+        call.resolve();
+    }
+
     private void open(Intent i) {
         try { getActivity().startActivity(i); }
         catch (Exception ex) { getActivity().startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()))); }

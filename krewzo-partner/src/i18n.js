@@ -188,3 +188,11 @@ const QR_TEXT = {
   HI: { my_qr: 'मेरा UPI QR', my_qr_sub: 'इसे दिखाएँ, पैसे या टिप सीधे आपके UPI में आएँगे।' },
 };
 for (const l of Object.keys(QR_TEXT)) Object.assign(DICT[l], QR_TEXT[l]);
+
+// Push status (Profile).
+const PUSH_TEXT = {
+  EN: { push_on: 'Job alerts are on', push_off: 'Job alerts are off on this phone', push_fix: 'Fix', push_blocked: 'Notifications are blocked. Turn them on in Settings.' },
+  TE: { push_on: 'జాబ్ అలర్ట్‌లు ఆన్‌లో ఉన్నాయి', push_off: 'ఈ ఫోన్‌లో జాబ్ అలర్ట్‌లు ఆఫ్‌లో ఉన్నాయి', push_fix: 'సరిచేయండి', push_blocked: 'నోటిఫికేషన్లు బ్లాక్ అయ్యాయి. సెట్టింగ్స్‌లో ఆన్ చేయండి.' },
+  HI: { push_on: 'जॉब अलर्ट चालू हैं', push_off: 'इस फ़ोन पर जॉब अलर्ट बंद हैं', push_fix: 'ठीक करें', push_blocked: 'सूचनाएँ बंद हैं। सेटिंग्स में चालू करें।' },
+};
+for (const l of Object.keys(PUSH_TEXT)) Object.assign(DICT[l], PUSH_TEXT[l]);

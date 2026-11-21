@@ -38,7 +38,7 @@ const getEscrow = (bookingId) => db.prepare('SELECT * FROM escrow_ledger WHERE b
 export function publicWorker(w) {
   if (!w) return null;
   const { pin_hash, fcm_token, ...rest } = w;
-  return rest;
+  return { ...rest, push_ok: !!fcm_token }; // the token itself never leaves the server
 }
 export function publicUser(u) {
   if (!u) return null;

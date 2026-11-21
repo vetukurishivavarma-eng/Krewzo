@@ -8,10 +8,17 @@ const REPO = 'vetukurishivavarma-eng/Krewzo';
 const APPS = { partner: { table: 'workers', name: 'Krewzo Partner' }, customer: { table: 'users', name: 'Krewzo' } };
 const FRESH_MS = 6 * 3600e3; // only announce recent releases (the DB resets on deploy, so "seen" is not durable)
 
-let lastCheck = 0;
-export async function announceNewReleases() {
-  if (!pushEnabled || Date.now() - lastCheck < 30e3) return 0;
-  lastCheck = Date.now();
+// Concurrent calls share one check; a repeat within 10 s gets the same answer (the route is public).
+let inflight = null, last = { at: 0, sent: 0 };
+export function announceNewReleases() {
+  if (!pushEnabled) return Promise.resolve(0);
+  if (inflight) return inflight;
+  if (Date.now() - last.at < 10e3) return Promise.resolve(last.sent);
+  inflight = check().then((sent) => { last = { at: Date.now(), sent }; return sent; }).finally(() => { inflight = null; });
+  return inflight;
+}
+
+async function check() {
   let sent = 0;
   try {
     // The public Atom feed, not api.github.com: Render's shared IPs hit the API's anonymous rate limit.

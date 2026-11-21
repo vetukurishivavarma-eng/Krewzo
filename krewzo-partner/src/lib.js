@@ -49,19 +49,35 @@ export const stopTrip = (id) => { if (id) BgGeo.removeWatcher({ id }).catch(() =
 
 // ---------- push (job offers when the app is closed / phone locked) ----------
 // Ask once, register with Firebase, give the server our token. Tapping a notification opens the app on home.
+// The token is sent with retries: a single failed request (server waking up, weak signal) used to leave the
+// phone without job alerts until the next launch. Returns 'ok' | 'denied' | 'error' | 'web'.
+let pushToken = null;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+async function sendPushToken() {
+  for (let i = 0; i < 6 && pushToken; i++) {
+    try { await api('PATCH', '/workers/me', { fcm_token: pushToken }); return true; } catch { await wait(5000 * (i + 1)); }
+  }
+  return false;
+}
+export const resendPushToken = () => (pushToken ? sendPushToken() : Promise.resolve(false));
 export async function setupPush(onTap) {
-  if (!isNative) return;
+  if (!isNative) return 'web';
   try {
     await PushNotifications.createChannel({ id: 'jobs', name: 'Job offers', importance: 5, visibility: 1, vibration: true });
     await PushNotifications.createChannel({ id: 'app_updates', name: 'App updates', importance: 3, visibility: 1 });
     let p = await PushNotifications.checkPermissions();
     if (p.receive.startsWith('prompt')) p = await PushNotifications.requestPermissions();
-    if (p.receive !== 'granted') return;
+    if (p.receive !== 'granted') return 'denied';
     await PushNotifications.removeAllListeners();
-    await PushNotifications.addListener('registration', ({ value }) => api('PATCH', '/workers/me', { fcm_token: value }).catch(() => {}));
+    const got = new Promise((resolve) => {
+      PushNotifications.addListener('registration', ({ value }) => { pushToken = value; sendPushToken().then((ok) => resolve(ok ? 'ok' : 'error')); });
+      PushNotifications.addListener('registrationError', () => resolve('error'));
+      setTimeout(() => resolve('error'), 30000);
+    });
     await PushNotifications.addListener('pushNotificationActionPerformed', () => onTap?.());
     await PushNotifications.register();
-  } catch {}
+    return await got;
+  } catch { return 'error'; }
 }
 // Logging out: stop offers going to this phone.
 export const clearPush = () => (isNative ? api('PATCH', '/workers/me', { fcm_token: null }).catch(() => {}) : null);
@@ -124,3 +140,4 @@ export const alertStatus = () => (isNative ? Native.alertStatus().catch(() => nu
 export const openOverlaySettings = () => Native.openOverlaySettings().catch(() => {});
 export const openFullScreenSettings = () => Native.openFullScreenSettings().catch(() => {});
 export const onNativeRefresh = (fn) => (isNative ? Native.addListener('refresh', fn) : null);
+export const openNotificationSettings = () => Native.openNotificationSettings().catch(() => {});

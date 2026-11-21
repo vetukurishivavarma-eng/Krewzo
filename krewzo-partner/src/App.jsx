@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
 import { DICT, LANGS } from './i18n.js';
 import {
   api, getServer, setServer, isNative, setupPush, clearPush, startTrip, stopTrip, chime, errorBuzz, connectSocket, getToken, setToken, speak, unlockAudio, vibrate, HELPLINE,
-  syncNative, alertStatus, openOverlaySettings, openFullScreenSettings, onNativeRefresh,
+  syncNative, alertStatus, openOverlaySettings, openFullScreenSettings, onNativeRefresh, resendPushToken, openNotificationSettings,
 } from './lib.js';
 import JobAlert from './JobAlert.jsx';
 import ActiveJob from './ActiveJob.jsx';
@@ -232,6 +232,7 @@ function Main({ t, lang, setLang, onLogout }) {
     try {
       const h = await api('GET', '/workers/me/home');
       setHome(h); setActive(h.active); setOffers(h.offers);
+      if (isNative && !h.worker.push_ok) resendPushToken(); // server lost this phone's token: send it again
     } catch (e) {
       if (e.status === 401) onLogout();
       else retry.current = setTimeout(() => loadRef.current(), 5000); // offline or Render waking up (~50 s)
@@ -321,7 +322,7 @@ function Main({ t, lang, setLang, onLogout }) {
         ? <ActiveJob t={t} lang={lang} job={active} onChange={setActive} onDone={() => { setActive(null); load(); }} />
         : <HomeTab t={t} lang={lang} home={home} online={online} busy={busy} geoErr={geoErr} onToggle={toggleDuty} onReload={load} />)}
       {tab === 'earnings' && <Passbook t={t} />}
-      {tab === 'profile' && <Profile t={t} w={w} lang={lang} setLang={setLang} onLogout={onLogout} />}
+      {tab === 'profile' && <Profile t={t} w={w} lang={lang} setLang={setLang} onLogout={onLogout} onReload={load} />}
       <NavBar t={t} tab={tab} setTab={setTab} badge={!!active} />
       {cancelled && <CancelledCard t={t} job={cancelled} onClose={() => setCancelled(null)} />}
     </div>
@@ -487,7 +488,31 @@ function MyUpiQr({ t, w }) {
   );
 }
 
-function Profile({ t, w, lang, setLang, onLogout }) {
+// Whether job alerts can reach this phone (the server holds its push token), with a one-tap fix.
+function PushStatus({ t, w, onReload }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  if (!isNative) return null;
+  async function fix() {
+    setBusy(true); setMsg('');
+    const r = await setupPush();
+    if (r === 'denied') { setMsg(t.push_blocked); openNotificationSettings(); }
+    await onReload();
+    setBusy(false);
+  }
+  return (
+    <div className={`rounded-3xl border p-4 flex items-center gap-3 ${w.push_ok ? 'bg-mint/10 border-mint/30' : 'bg-amber/10 border-amber/30'}`}>
+      <BellRing className={w.push_ok ? 'text-mint' : 'text-amber'} />
+      <div className="flex-1 min-w-0">
+        <div className="font-bold">{w.push_ok ? t.push_on : t.push_off}</div>
+        {msg && <div className="text-sm text-muted">{msg}</div>}
+      </div>
+      {!w.push_ok && <button disabled={busy} onClick={fix} className="h-11 px-5 rounded-xl bg-lime text-ink font-black disabled:opacity-50">{busy ? '…' : t.push_fix}</button>}
+    </div>
+  );
+}
+
+function Profile({ t, w, lang, setLang, onLogout, onReload }) {
   return (
     <div className="p-5 flex flex-col gap-4">
       <div className="rounded-[2rem] bg-surface border border-line p-5 flex items-center gap-4">
@@ -505,6 +530,7 @@ function Profile({ t, w, lang, setLang, onLogout }) {
         </div>
 
       </div>
+      <PushStatus t={t} w={w} onReload={onReload} />
       <MyUpiQr t={t} w={w} />
       <div className="rounded-3xl bg-surface border border-line p-4 flex items-center justify-between">
         <div className="font-bold">{t.language}</div>
