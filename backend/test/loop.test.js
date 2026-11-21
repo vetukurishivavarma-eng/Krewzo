@@ -150,3 +150,9 @@ test('five wrong PINs lock the login, even with the right PIN', async () => {
   assert.equal(right.status, 429);
   assert.equal((await call('POST', '/api/auth/customer', { phone: '9999999999', pin: '1234' })).status, 200); // other accounts unaffected
 });
+
+test('token for a deleted account gets 401 so the app returns to login', async () => {
+  const { signToken } = await import('../src/auth.js');
+  assert.equal((await call('GET', '/api/workers/me/home', null, signToken('worker', 99999))).status, 401);
+  assert.equal((await call('GET', '/api/me', null, signToken('customer', 99999))).status, 401);
+});

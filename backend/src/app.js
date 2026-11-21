@@ -43,6 +43,9 @@ export function createApp() {
   const auth = (role) => (req, _res, next) => {
     const t = readToken((req.headers.authorization || '').replace(/^Bearer /, '') || req.query.token);
     if (!t || (role && t.role !== role)) throw new svc.ApiError(401, 'Please log in again');
+    // A valid token can outlive its account (e.g. the demo DB was reset), so the apps must be sent back to login.
+    const table = { customer: 'users', worker: 'workers' }[t.role];
+    if (!table || !db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(t.id)) throw new svc.ApiError(401, 'Please log in again');
     req.auth = t;
     next();
   };

@@ -164,8 +164,15 @@ function Main({ t, lang, setLang, onLogout }) {
     try {
       const h = await api('GET', '/workers/me/home');
       setHome(h); setActive(h.active); setOffers(h.offers);
-    } catch (e) { if (e.status === 401) onLogout(); }
+    } catch (e) {
+      if (e.status === 401) onLogout();
+      else retry.current = setTimeout(() => loadRef.current(), 5000); // offline or Render waking up (~50 s)
+    }
   }, [onLogout]);
+  const retry = useRef();
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => () => clearTimeout(retry.current), []);
 
   useEffect(() => {
     load();
