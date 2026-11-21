@@ -32,6 +32,8 @@
 
 **Krewzo Business subscription (2026-11-21, customer 2.0.7)**: Starter Rs 999 / Pro Rs 2,499 per 30 days + GST (shared `BUSINESS_PLANS`): fee discount 50% / 100%, monthly billing on credit Rs 25k / 1L, team seats 3 / 10, Pro searches 5 km. `backend/src/business.js`: simulated autopay with lazy renewal, cancel at period end, prorated switch, team by phone, monthly bill (blocked if last month unpaid after the 7th), statement/pay, attendance CSV, monthly GST invoice. Customer app: Account -> Krewzo Business; checkout shows discount + Monthly bill / UPI. 27 backend tests. Payments still simulated (Razorpay/Cashfree subscriptions + payouts at launch).
 
+**UPI QR + push reliability (2026-11-21, partner/customer 2.0.9)**: shared `upiLink()` (upi://pay, literal @). Partner Profile shows "My UPI QR". Customer can tip after PAID_OUT (worker upi_id only exposed then): Rs 20/50/100, QR with amount + open-in-UPI-app. Found 0 workers with a push token (likely the manual reinstall): apps now retry the token PATCH, partner resends when `push_ok` is false, Profile shows "Job alerts on/off" + Fix (opens Android notification settings). Release push: script sends the tag, server confirms it at github.com/.../releases/tag/<tag> (the Atom feed lags), concurrent checks share one run; verified customer-v2.0.9 push delivered to 1 phone.
+
 **Not verified yet**
 - No one has clicked through the UI in a real browser or phone. First thing next session: `npm run dev`, open :5173 + :5174 side by side and run the demo loop from the README.
 - Camera QR scan is untested on a real phone (needs HTTPS → use a cloudflared tunnel).
