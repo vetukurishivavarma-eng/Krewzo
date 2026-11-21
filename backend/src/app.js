@@ -130,7 +130,7 @@ export function createApp() {
 
   // The release script calls this after publishing: push "new version ready" to every phone. Public on purpose:
   // it only re-reads GitHub releases (throttled), so calling it can't do anything but announce a real release.
-  app.post('/api/releases/check', async (req, res) => res.json({ sent: await announceNewReleases() }));
+  app.post('/api/releases/check', async (req, res) => res.json({ sent: await announceNewReleases(req.body?.tag) }));
 
   // ---------- Krewzo Business subscription ----------
   const C = auth('customer');

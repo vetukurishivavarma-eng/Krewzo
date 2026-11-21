@@ -43,7 +43,9 @@ fs.copyFileSync(apkPath, path.join(os.homedir(), 'Downloads', name));
 // Retries for ~4 min: the server may be restarting after a deploy.
 for (let i = 1; i <= 6; i++) {
   try {
-    const r = await fetch(`${process.env.VITE_API_URL}/api/releases/check`, { method: 'POST', signal: AbortSignal.timeout(60e3) });
+    const r = await fetch(`${process.env.VITE_API_URL}/api/releases/check`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tag }), signal: AbortSignal.timeout(60e3),
+    });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     console.log('Update push:', (await r.json()).sent, 'phones');
     break;

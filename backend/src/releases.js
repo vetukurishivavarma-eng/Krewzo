@@ -10,15 +10,24 @@ const FRESH_MS = 6 * 3600e3; // only announce recent releases (the DB resets on 
 
 // Concurrent calls share one check; a repeat within 10 s gets the same answer (the route is public).
 let inflight = null, last = { at: 0, sent: 0 };
-export function announceNewReleases() {
+export function announceNewReleases(tag) {
   if (!pushEnabled) return Promise.resolve(0);
-  if (inflight) return inflight;
-  if (Date.now() - last.at < 10e3) return Promise.resolve(last.sent);
-  inflight = check().then((sent) => { last = { at: Date.now(), sent }; return sent; }).finally(() => { inflight = null; });
+  if (inflight) return inflight.then(() => (tag ? announceNewReleases(tag) : last.sent));
+  if (!tag && Date.now() - last.at < 10e3) return Promise.resolve(last.sent);
+  inflight = check(tag).then((sent) => { last = { at: Date.now(), sent }; return sent; }).finally(() => { inflight = null; });
   return inflight;
 }
 
-async function check() {
+// GitHub's releases feed lags a minute or more behind a new release, so the release script names the tag
+// and we confirm it on the release page itself (public, can't be faked by a caller).
+const TAG_RE = /^(partner|customer)-v\d+\.\d+\.\d+$/;
+async function confirmTag(tag) {
+  if (!TAG_RE.test(tag || '')) return null;
+  const r = await fetch(`https://github.com/${REPO}/releases/tag/${tag}`, { method: 'HEAD', redirect: 'manual' });
+  return r.status === 200 ? { tag_name: tag, published_at: new Date().toISOString() } : null;
+}
+
+async function check(tag) {
   let sent = 0;
   try {
     // The public Atom feed, not api.github.com: Render's shared IPs hit the API's anonymous rate limit.
@@ -26,6 +35,8 @@ async function check() {
     const list = [...xml.matchAll(/<entry>[\s\S]*?<\/entry>/g)].map(([e]) => ({
       tag_name: e.match(/releases\/tag\/([^"<]+)/)?.[1] || '', published_at: e.match(/<updated>([^<]+)<\/updated>/)?.[1],
     })).sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
+    const named = await confirmTag(tag);
+    if (named) list.unshift(named);
     for (const [app, { table, name }] of Object.entries(APPS)) {
       const rel = list.find((r) => r.tag_name.startsWith(app + '-v'));
       if (!rel || Date.now() - Date.parse(rel.published_at) > FRESH_MS) continue;
