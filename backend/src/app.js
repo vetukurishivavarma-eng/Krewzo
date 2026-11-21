@@ -18,8 +18,8 @@ import { ADMIN_PAGE } from './admin-page.js';
 
 // The phone's real address. On Render the TCP peer is an internal proxy (10.x), so read what the edge
 // proxies add: Cloudflare's CF-Connecting-IP / True-Client-IP first, else the first X-Forwarded-For entry.
-// ponytail: X-Forwarded-For can be faked by the caller, which only lets them dodge the per-network limit
-// (per-phone PIN lockout still applies); tighten once the header Render passes is confirmed.
+// Verified live 2026-11-21: Render passes CF-Connecting-IP (set by Cloudflare, not fakeable by the caller).
+// The X-Forwarded-For fallback is only for local dev / other hosts.
 export function clientIp(req) {
   const h = req.headers;
   const xff = String(h['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
