@@ -3,8 +3,9 @@
 ## RESUME HERE (saved 2026-11-21 evening — "good stage", paused by the user)
 
 **Where things stand**
-- Live: backend https://krewzo-api.onrender.com (Render free, Singapore; data durable via SQLite -> Neon snapshots). Apps: partner 2.0.12, customer 2.0.12 (in-app auto-update from GitHub releases; "update ready" push). Ops: https://krewzo-api.onrender.com/admin (ADMIN_KEY from Render) + "Krewzo team login" in the customer app. Client download page: https://vetukurishivavarma-eng.github.io/Krewzo/ (gh-pages; still lists partner 2.0.6 / customer 2.0.5 — the apps update themselves).
-- Backend tests: `npm test` = 42 green (loop, offer expiry, KYC, business, safety, ops).
+- Live: backend https://krewzo-api.onrender.com (Render free, Singapore; data durable via SQLite -> Neon snapshots). Apps: partner 2.0.13, customer 2.0.13 (in-app auto-update from GitHub releases; "update ready" push). Ops: https://krewzo-api.onrender.com/admin (ADMIN_KEY from Render) + "Krewzo team login" in the customer app. Client download page: https://vetukurishivavarma-eng.github.io/Krewzo/ (gh-pages; still lists partner 2.0.6 / customer 2.0.5 — the apps update themselves).
+- Backend tests: `npm test` = 46 green (loop, offer expiry, KYC, business, safety, ops, trust).
+- 2.0.13: UIDAI certificates installed (backend/certs, all 7 offline/Secure QR keys; current valid to 2029). Probation: first 5 paid jobs = General Helper, 7 am-7 pm IST, ends at 5 jobs with avg rating 4+ (demo partners waived via `probation_waived`). Optional Police Clearance Certificate upload -> ops approve -> "Police verified" badge for 1 year (ops app Police tab + /admin).
 - Release flow: bump `version` in krewzo-<app>/package.json, `node scripts/release.mjs partner|customer "notes"`. After a backend push, confirm a NEW route answers (Render free once kept serving the old instance; a manual redeploy fixed it).
 - Payments, escrow, payouts, subscription autopay are SIMULATED.
 
@@ -12,7 +13,7 @@
 1. Rotate the Neon password (the connection string was pasted in chat), then update `DATABASE_URL` on Render.
 2. Decide when to switch off the demo accounts (PIN 1234; verified demo workers can accept real jobs in prod). Doing so breaks the demo login on the download page.
 3. Worker phone had no push token: open partner app -> Profile -> "Job alerts are on" (tap Fix).
-4. UIDAI Secure QR production certificate -> `backend/certs/` (until then every ID check goes to manual review).
+4. Scan a REAL Aadhaar in the partner app (reset your number on /admin first): if the ops screen shows "UIDAI signature verified", set `UIDAI_STRICT=1` on Render so failed signatures are refused instead of sent to review.
 5. Add ops team members on /admin (setup code -> 6-digit PIN in the app).
 
 **Next candidates (need outside services / money)**
