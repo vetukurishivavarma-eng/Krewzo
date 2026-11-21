@@ -9,10 +9,11 @@ export default function UpdateBanner() {
   const [err, setErr] = useState('');
   const [ready, setReady] = useState(false); // file is downloaded: the next tap opens the installer straight away
   const [hidden, setHidden] = useState(false);
+  const [reason, setReason] = useState(''); // why Android is holding the download, if it says
 
   const go = async (rel = u) => {
     setErr(''); setPct((p) => p ?? 0);
-    try { await installUpdate(rel.url, setPct, 'Krewzo ' + rel.version); setPct(null); setReady(true); }
+    try { await installUpdate(rel.url, setPct, 'Krewzo ' + rel.version, setReason); setPct(null); setReady(true); }
     catch (e) { setErr(e.message); setPct(null); }
   };
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function UpdateBanner() {
       <div className="flex items-center gap-3">
         <div className="flex-1 font-bold leading-tight">
           New version {u.version}
-          <div className="text-xs font-normal opacity-60">{pct !== null ? 'Downloading in background, you can keep using the app' : ready ? 'Downloaded, ready to install' : 'Tap Update to download'}</div>
+          <div className="text-xs font-normal opacity-60">{pct !== null ? (reason || 'Downloading in background, you can keep using the app') : ready ? 'Downloaded, ready to install' : 'Tap Update to download'}</div>
           {err && <div className="text-sm text-[#ff5a4e] font-normal">{err}</div>}
         </div>
         <button disabled={pct !== null} onClick={() => go()} className="h-11 px-5 rounded-xl bg-[#c8f031] text-[#15130f] font-black disabled:opacity-80">

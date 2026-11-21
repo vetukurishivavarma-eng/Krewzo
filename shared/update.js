@@ -24,8 +24,8 @@ export async function checkForUpdate(app, current) {
 
 // Downloads in the background (Android DownloadManager, keeps going if the app is left or closed),
 // then opens the installer. Calling it again joins a running download or reuses the finished file.
-export async function installUpdate(url, onProgress, title) {
-  const sub = await Updater.addListener('progress', (e) => onProgress?.(e.pct));
+export async function installUpdate(url, onProgress, title, onReason) {
+  const sub = await Updater.addListener('progress', (e) => { onProgress?.(e.pct); onReason?.(e.reason || ''); });
   try { await Updater.install({ url, title }); } finally { sub.remove(); }
 }
 
